@@ -274,12 +274,11 @@ double Potential() {
                 
                 rnorm=sqrt(r2);
                 quot=sigma/rnorm;
-                double aux1 = quot * quot * quot * quot;
-                double aux2 = quot * quot * quot;
-                term1 = aux1 * aux1 * aux1;
-                term2 = aux2 * aux2;
+                double aux1 = quot * quot * quot;
+                term2 = aux1 * aux1;
+                //term1 = term2 * term2;
                 
-                Pot += 4*epsilon*(term1 - term2);
+                Pot += 4. * epsilon * term2 * (1 - term2);
                 
             }
         }
@@ -296,13 +295,14 @@ double Potential() {
 void computeAccelerations() {
     int i, j, k;
     double f, rSqd;
-    double rij[3]; // position of i relative to j
+    //double rij[3]; // position of i relative to j
+    double rij0, rij1, rij2;
     
      // After the main loop, set all accelerations to zero
     for (k = 0; k < 3; k++) {
-        for (i = 0; i < N; i++) {
-            a[i][k] = 0.;
-        }
+        a[i][0] = 0.;
+        a[i][1] = 0.;
+        a[i][2] = 0.;
     }
     
     for (i = 0; i < N-1; i++) {
@@ -310,24 +310,26 @@ void computeAccelerations() {
             // initialize r^2 to zero
             rSqd = 0.;
 
-            for (k = 0; k < 3; k++) {
-                // component-by-component position of i relative to j
-                rij[k] = r[i][k] - r[j][k];
-                // sum of squares of the components
-                rSqd += rij[k] * rij[k];
-            }
+            rij0 = r[i][0] - r[j][0];
+            rij1 = r[i][1] - r[j][1];
+            rij2 = r[i][2] - r[j][2];
+            rSqd = rij0 * rij0 + rij1 * rij1 + rij2 * rij2;
 
             // From derivative of Lennard-Jones with sigma and epsilon set equal to 1 in natural units!
             //f = 24. * (2 * pow(rSqd, -7) - pow(rSqd, -4));
-            double aux1 = rSqd * rSqd * rSqd;
-            f = (48.-24. * aux1)/(aux1 * aux1 * rSqd);
+            double aux = rSqd * rSqd * rSqd;
+            f = (48.-24. * aux)/(aux * aux * rSqd);
 
-            for (k = 0; k < 3; k++) {
-                // from F = ma, where m = 1 in natural units!
-                double aux = rij[k] * f;
-                a[i][k] += aux;
-                a[j][k] -= aux;
-            }
+            double aux0 = rij0 * f;
+            double aux1 = rij1 * f;
+            double aux2 = rij2 * f;
+            a[i][0] += aux0;
+            a[j][0] -= aux0;
+            a[i][1] += aux1;
+            a[j][1] -= aux1;
+            a[i][2] += aux2;
+            a[j][2] -= aux2;
+
         }
     }
 }

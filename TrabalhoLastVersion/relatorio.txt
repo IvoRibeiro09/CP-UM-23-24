@@ -3,16 +3,9 @@ Flat profile:
 Each sample counts as 0.01 seconds.
   %   cumulative   self              self     total           
  time   seconds   seconds    calls  ms/call  ms/call  name    
- 62.11     24.23    24.23      201   120.55   120.55  Potential()
- 37.96     39.04    14.81      202    73.31    73.31  computeAccelerations()
-  0.03     39.05     0.01      201     0.05    73.36  VelocityVerlet(double, int, _IO_FILE*)
-  0.03     39.06     0.01      201     0.05     0.05  MeanSquaredVelocity()
-  0.00     39.06     0.00     6480     0.00     0.00  gaussdist()
-  0.00     39.06     0.00      201     0.00     0.00  Kinetic()
-  0.00     39.06     0.00        1     0.00     0.00  initialize()
-  0.00     39.06     0.00        1     0.00     0.00  initializeVelocities()
-  0.00     39.06     0.00        1     0.00     0.00  __gnu_cxx::__promote_2<int, double, __gnu_cxx::__promote<int, std::__is_integer<int>::__value>::__type, __gnu_cxx::__promote<double, std::__is_integer<double>::__value>::__type>::__type std::pow<int, double>(int, double)
-  0.00     39.06     0.00        1     0.00     0.00  __gnu_cxx::__enable_if<std::__is_integer<int>::__value, double>::__type std::floor<int>(int)
+ 65.63      4.04     4.04                             Potential()
+ 34.52      6.16     2.12      201    10.56    10.56  computeAccelerations()
+  0.00      6.16     0.00     3240     0.00     0.00  frame_dummy
 
  %         the percentage of the total running time of the
 time       program used by this function.
@@ -50,53 +43,21 @@ notice and this notice are preserved.
 		     Call graph (explanation follows)
 
 
-granularity: each sample hit covers 2 byte(s) for 0.03% of 39.06 seconds
+granularity: each sample hit covers 2 byte(s) for 0.16% of 6.16 seconds
 
 index % time    self  children    called     name
                                                  <spontaneous>
-[1]    100.0    0.00   39.06                 main [1]
-               24.23    0.00     201/201         Potential() [2]
-                0.01   14.74     201/201         VelocityVerlet(double, int, _IO_FILE*) [4]
-                0.07    0.00       1/202         computeAccelerations() [3]
-                0.01    0.00     201/201         MeanSquaredVelocity() [5]
-                0.00    0.00     201/201         Kinetic() [13]
-                0.00    0.00       1/1           initialize() [14]
-                0.00    0.00       1/1           __gnu_cxx::__enable_if<std::__is_integer<int>::__value, double>::__type std::floor<int>(int) [17]
+[1]     65.5    4.04    0.00                 Potential() [1]
 -----------------------------------------------
-               24.23    0.00     201/201         main [1]
-[2]     62.0   24.23    0.00     201         Potential() [2]
+                2.12    0.00     201/201         VelocityVerlet(double, int, _IO_FILE*) [3]
+[2]     34.5    2.12    0.00     201         computeAccelerations() [2]
 -----------------------------------------------
-                0.07    0.00       1/202         main [1]
-               14.74    0.00     201/202         VelocityVerlet(double, int, _IO_FILE*) [4]
-[3]     37.9   14.81    0.00     202         computeAccelerations() [3]
+                                                 <spontaneous>
+[3]     34.5    0.00    2.12                 VelocityVerlet(double, int, _IO_FILE*) [3]
+                2.12    0.00     201/201         computeAccelerations() [2]
 -----------------------------------------------
-                0.01   14.74     201/201         main [1]
-[4]     37.8    0.01   14.74     201         VelocityVerlet(double, int, _IO_FILE*) [4]
-               14.74    0.00     201/202         computeAccelerations() [3]
------------------------------------------------
-                0.01    0.00     201/201         main [1]
-[5]      0.0    0.01    0.00     201         MeanSquaredVelocity() [5]
------------------------------------------------
-                0.00    0.00    6480/6480        initializeVelocities() [15]
-[12]     0.0    0.00    0.00    6480         gaussdist() [12]
------------------------------------------------
-                0.00    0.00     201/201         main [1]
-[13]     0.0    0.00    0.00     201         Kinetic() [13]
------------------------------------------------
-                0.00    0.00       1/1           main [1]
-[14]     0.0    0.00    0.00       1         initialize() [14]
-                0.00    0.00       1/1           __gnu_cxx::__promote_2<int, double, __gnu_cxx::__promote<int, std::__is_integer<int>::__value>::__type, __gnu_cxx::__promote<double, std::__is_integer<double>::__value>::__type>::__type std::pow<int, double>(int, double) [16]
-                0.00    0.00       1/1           initializeVelocities() [15]
------------------------------------------------
-                0.00    0.00       1/1           initialize() [14]
-[15]     0.0    0.00    0.00       1         initializeVelocities() [15]
-                0.00    0.00    6480/6480        gaussdist() [12]
------------------------------------------------
-                0.00    0.00       1/1           initialize() [14]
-[16]     0.0    0.00    0.00       1         __gnu_cxx::__promote_2<int, double, __gnu_cxx::__promote<int, std::__is_integer<int>::__value>::__type, __gnu_cxx::__promote<double, std::__is_integer<double>::__value>::__type>::__type std::pow<int, double>(int, double) [16]
------------------------------------------------
-                0.00    0.00       1/1           main [1]
-[17]     0.0    0.00    0.00       1         __gnu_cxx::__enable_if<std::__is_integer<int>::__value, double>::__type std::floor<int>(int) [17]
+                0.00    0.00    3240/3240        initializeVelocities() [13]
+[4]      0.0    0.00    0.00    3240         frame_dummy [4]
 -----------------------------------------------
 
  This table describes the call tree of the program, and was sorted by
@@ -189,7 +150,4 @@ notice and this notice are preserved.
 
 Index by function name
 
-  [14] initialize()           [15] initializeVelocities() [16] __gnu_cxx::__promote_2<int, double, __gnu_cxx::__promote<int, std::__is_integer<int>::__value>::__type, __gnu_cxx::__promote<double, std::__is_integer<double>::__value>::__type>::__type std::pow<int, double>(int, double)
-   [4] VelocityVerlet(double, int, _IO_FILE*) [13] Kinetic() [17] __gnu_cxx::__enable_if<std::__is_integer<int>::__value, double>::__type std::floor<int>(int)
-   [5] MeanSquaredVelocity()   [2] Potential()
-   [3] computeAccelerations() [12] gaussdist()
+   [2] computeAccelerations()  [1] Potential()             [4] frame_dummy
