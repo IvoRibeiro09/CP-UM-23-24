@@ -1,4 +1,4 @@
-CC = gcc
+CC = g++
 SRC = src/
 CFLAGS = -O3 -fno-omit-frame-pointer -ffast-math -funroll-loops -ftree-vectorize -msse4 -mavx -pg
 LIBS = -lm
