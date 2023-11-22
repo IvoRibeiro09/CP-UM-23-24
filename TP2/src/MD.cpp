@@ -34,7 +34,7 @@ using namespace std;
 
 
 //  Lennard-Jones parameters in natural units!
-const int N = 2160;// Number of particles
+const int N = 5000;// Number of particles
 const int ep_8 = 8;
 int MAXPART = 15000;
 const int limit = 6480;
@@ -190,28 +190,27 @@ void MeanSquaredVelocity_and_Kinetic(){
 //   accelleration of each atom. 
 void computeAccelerations_plus_potential(){
     int i, j;
-    double f, rSqd, term2, ri0, ri1, ri2, M0, M1, M2, aux, aux0, aux1, aux2, a0, a1, a2;
     PE = 0.;
     for (i = 0; i < limitM1; i += 3) { // loop over all distinct pairs i, j
-        a0 = 0.0, a1 = 0.0, a2 = 0.0;
+        double a0 = 0.0, a1 = 0.0, a2 = 0.0;
 
-        ri0 = r[i];
-        ri1 = r[i + 1];
-        ri2 = r[i + 2];
-        #pragma omp_parallel for
+        double ri0 = r[i];
+        double ri1 = r[i + 1];
+        double ri2 = r[i + 2];
+        //#pragma omp_parallel for reduction(+:PE,a[MAXPART]) private(j, M0, M1, M2, rSqd, aux, aux0, aux1, aux2, term2, f, a0, a1, a2)
         for (j = i + 3; j < limit; j += 3) {
-            M0 = ri0 - r[j], M1 = ri1 - r[j + 1], M2 = ri2 - r[j + 2];
+            double M0 = ri0 - r[j], M1 = ri1 - r[j + 1], M2 = ri2 - r[j + 2];
 
-            rSqd = M0 * M0 + M1 * M1 + M2 * M2;
+            double rSqd = M0 * M0 + M1 * M1 + M2 * M2;
         
-            aux = rSqd * rSqd * rSqd;
-            term2 = 1. / aux;
-            f = (48. - 24. * aux) / (aux * aux * rSqd);
+            double aux = rSqd * rSqd * rSqd;
+            double term2 = 1. / aux;
+            double f = (48. - 24. * aux) / (aux * aux * rSqd);
             PE += ep_8 * term2 * (term2 - 1.);  
 
-            aux0 = M0 * f;
-            aux1 = M1 * f;
-            aux2 = M2 * f;
+            double aux0 = M0 * f;
+            double aux1 = M1 * f;
+            double aux2 = M2 * f;
             
             a0 += aux0;
             a1 += aux1;
@@ -226,16 +225,17 @@ void computeAccelerations_plus_potential(){
 }
 
 //set all positions in a array to zero
-void clearAmatrix(){
+void clearAmatrix() {
     int i;
-    for (i = 0; i < limit;) {  // set all accelerations to zero
-        a[i++] = 0.;
-        a[i++] = 0.;
-        a[i++] = 0.;
+    //#pragma omp parallel for
+    for (i = 0; i < limit; i += 6) {
+        a[i] = 0.0;
+        a[i + 1] = 0.0;
+        a[i + 2] = 0.0;
 
-        a[i++] = 0.;
-        a[i++] = 0.;
-        a[i++] = 0.;
+        a[i + 3] = 0.0;
+        a[i + 4] = 0.0;
+        a[i + 5] = 0.0;
     }
 }
 

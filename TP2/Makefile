@@ -14,7 +14,7 @@ clean:
 	rm -rf MD.exe gmon.out cp_average.txt cp_output.txt cp_traj.xyz
 
 run:
-	srun --partition=cpar perf stat ./MD.exe < inputdata.txt
+	srun --partition=cpar --cpus-per-task=2 perf stat ./MD.exe < inputdata.txt
 
 run1:
 	perf stat ./MD.exe < inputdata.txt
