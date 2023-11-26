@@ -17,7 +17,7 @@ run:
 	srun --partition=cpar perf stat ./MD.exe < inputdata.txt
 
 run1:
-	perf stat ./MD.exe < inputdata.txt
+	./MD.exe < inputdata.txt
 
 test: 
 	@diff -s cp_average.txt Correct_res/cp_average.txt

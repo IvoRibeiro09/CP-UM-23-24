@@ -32,8 +32,8 @@
 const int N = 5000;// Number of particles
 const int ep_8 = 8;
 const int MAXPART = 15000;
-const int limit = 6480;
-const int limitM1 = 6477;
+const int limit = 15000;
+const int limitM1 = 14997;
 
 double NA = 6.022140857e23;
 double kBSI = 1.38064852e-23;  // m^2*kg/(s^2*K)
@@ -41,8 +41,6 @@ double m = 1.;
 double kB = 1.;
 
 double PE;
-double mvs;
-double KE;
 
 //  Size of box, which will be specified in natural units
 double L;
@@ -170,17 +168,13 @@ void initialize() {
 
 //  Function to calculate the averaged velocity squared
 //  Function to calculate the kinetic energy of the system
-void MeanSquaredVelocity_and_Kinetic(){
-    int i;
-    double velo = 0., v2, kin;
-    
-    for(i=0; i < limit; i += 3){
-        v2 = v[i]*v[i] + v[i + 1]*v[i + 1] + v[i + 2]*v[i + 2];
-        velo += v2;
-        kin += m*v2/2.;
+double MeanSquaredVelocity_and_Kinetic(){
+    double velo = 0.;
+    #pragma omp parallel for schedule(runtime) reduction(+:velo)
+    for(int i=0; i < limit; i++){
+        velo += v[i]*v[i];
     }
-    KE = kin;
-    mvs = velo/N;
+    return velo;
 }
 
 // Function to calculate the potential energy of the system
@@ -188,53 +182,45 @@ void MeanSquaredVelocity_and_Kinetic(){
 //   the forces on each atom.  Then uses a = F/m to calculate the
 //   accelleration of each atom. 
 void computeAccelerations_plus_potential(){
-    int i, j;
-    double f, rSqd, term2, ri0, ri1, ri2, M0, M1, M2, aux, aux0, aux1, aux2, a0, a1, a2;
-    PE = 0.;
-    for (i = 0; i < limitM1; i += 3) { // loop over all distinct pairs i, j
-        a0 = 0.0, a1 = 0.0, a2 = 0.0;
+    double Pot = 0.;
 
-        ri0 = r[i];
-        ri1 = r[i + 1];
-        ri2 = r[i + 2];
+    #pragma omp parallel for schedule(runtime) reduction(+:Pot,a[:limit]) 
+    for (int i = 0; i < limitM1;i +=3) { // loop over all distinct pairs i, j
+        double a0 = 0.0, a1 = 0.0, a2 = 0.0;
+        double ri0 = r[i], ri1 = r[i + 1], ri2 = r[i + 2];
 
-        for (j = i + 3; j < limit; j += 3) {
-            M0 = ri0 - r[j], M1 = ri1 - r[j + 1], M2 = ri2 - r[j + 2];
+        for (int j = i + 3; j < limit;j +=3) {
+            double M0 = ri0 - r[j], M1 = ri1 - r[j + 1], M2 = ri2 - r[j + 2];
 
-            rSqd = M0 * M0 + M1 * M1 + M2 * M2;
+            double rSqd = M0 * M0 + M1 * M1 + M2 * M2;
         
-            aux = rSqd * rSqd * rSqd;
-            term2 = 1. / aux;
-            f = (48. - 24. * aux) / (aux * aux * rSqd);
-            PE += ep_8 * term2 * (term2 - 1.);  
+            double aux = rSqd * rSqd * rSqd;
+            double term2 = 1. / aux;
+            double f = (48. - 24. * aux) / (aux * aux * rSqd);
+            Pot += term2 * (term2 - 1.);  
 
-            aux0 = M0 * f;
-            aux1 = M1 * f;
-            aux2 = M2 * f;
+            double aux0 = M0 * f;
+            double aux1 = M1 * f;
+            double aux2 = M2 * f;
             
             a0 += aux0;
             a1 += aux1;
             a2 += aux2;
             
-            a[j] -= aux0, a[j + 1] -= aux1, a[j + 2] -= aux2;
+            a[j] -= aux0, a[j+1] -= aux1, a[j+2] -= aux2;
         }
         a[i] += a0;
-        a[i + 1] += a1;
-        a[i + 2] += a2;
+        a[i+1] += a1;
+        a[i+2] += a2;
     }
+    PE = Pot * ep_8;
 }
 
 //set all positions in a array to zero
 void clearAmatrix(){
-    int i;
-    for (i = 0; i < limit;) {  // set all accelerations to zero
-        a[i++] = 0.;
-        a[i++] = 0.;
-        a[i++] = 0.;
-
-        a[i++] = 0.;
-        a[i++] = 0.;
-        a[i++] = 0.;
+    #pragma omp parallel for schedule(runtime)
+    for (int i = 0; i < limit;i++) {  // set all accelerations to zero
+        a[i] = 0.;
     }
 }
 
@@ -284,7 +270,7 @@ int main(){
     int i;
     double dt, Vol, Temp, Press, Pavg, Tavg, rho;
     double VolFac, TempFac, PressFac, timefac;
-    double gc, Z;
+    double gc, Z, mvs, KE;
     char prefix[1000], tfn[1000], ofn[1000], afn[1000];
     FILE *tfp, *ofp, *afp;
     
@@ -508,7 +494,8 @@ int main(){
         //  We would also like to use the IGL to try to see if we can extract the gas constant
         //MeanSquaredVelocity();
         //Kinetic();
-        MeanSquaredVelocity_and_Kinetic();
+        mvs = MeanSquaredVelocity_and_Kinetic()/N;
+        KE = MeanSquaredVelocity_and_Kinetic()*0.5;
         //Potential();
         
         // Temperature from Kinetic Theory

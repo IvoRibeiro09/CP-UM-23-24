@@ -1,23 +1,36 @@
-CC = g++
+CC = gcc
 SRC = src/
-CFLAGS = -O3 -fno-omit-frame-pointer -ffast-math -funroll-loops -ftree-vectorize -msse4 -mavx -pg
-LIBS = -lm
-
-.DEFAULT_GOAL = MD.exe
+CFLAGS = -O3 -fopenmp -ftree-vectorize -msse4 -mavx -pg 
 
 
-MD.exe: $(SRC)/MD.cpp
-	$(CC) $(CFLAGS) $(SRC)MD.cpp $(LIBS) -o MD.exe 
+.DEFAULT_GOAL = all
 
+all: MDseq.exe MDpar.exe
+
+MDseq.exe: $(SRC)/MDseq.cpp
+	module load gcc/11.2.0;\
+	$(CC) $(CFLAGS) $(SRC)MDseq.cpp -lm -o MDseq.exe
+
+MDpar.exe: $(SRC)/MDpar.cpp
+	module load gcc/11.2.0;\
+	$(CC) $(CFLAGS) $(SRC)MDpar.cpp -lm -fopenmp -o MDpar.exe
 
 clean:
-	rm -rf MD.exe gmon.out cp_average.txt cp_output.txt cp_traj.xyz
+	rm -rf slurm* MDpar.exe MDseq.exe gmon.out cp_average.txt cp_output.txt cp_traj.xyz lixo relatorio.txt
 
-run:
-	srun --partition=cpar --cpus-per-task=2 perf stat ./MD.exe < inputdata.txt
+runseq: MDseq.exe
+	./MDseq.exe < inputdata.txt
 
-run1:
-	perf stat ./MD.exe < inputdata.txt
+runpar: MDpar.exe
+	export OMP_NUM_THREADS=16;\
+	./MDpar.exe < inputdata.txt
+
+runseqperf: MDseq.exe
+	 perf stat ./MDseq.exe < inputdata.txt
+
+runparperf: MDpar.exe
+	export OMP_NUM_THREADS=16;\
+	 perf stat ./MDpar.exe < inputdata.txt
 
 test: 
 	@diff -s cp_average.txt Correct_res/cp_average.txt
