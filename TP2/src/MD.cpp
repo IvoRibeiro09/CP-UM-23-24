@@ -27,16 +27,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <cmath>
-#include <vector>
-#include <cstdlib>  // Para incluir as funções de alocação e desalocação de memória, como new e delete
-#include <cstdio>   // Para incluir funções de entrada e saída padrão, como printf
-using namespace std;
-
 
 //  Lennard-Jones parameters in natural units!
 const int N = 5000;// Number of particles
 const int ep_8 = 8;
-int MAXPART = 15000;
+const int MAXPART = 15000;
 const int limit = 6480;
 const int limitM1 = 6477;
 
@@ -51,18 +46,19 @@ double KE;
 
 //  Size of box, which will be specified in natural units
 double L;
+
 //  Initial Temperature in Natural Units
 double Tinit;  //2;
 
 //  Vectors!
 //  Position
-vector<double> r(MAXPART);
+double r[MAXPART];
 //  Velocity
-vector<double> v(MAXPART);
+double v[MAXPART];
 //  Acceleration
-vector<double> a(MAXPART);
+double a[MAXPART];
 //  Force
-vector<double> F(MAXPART);
+double F[MAXPART];
 // atom type
 char atype[10];
 
@@ -84,8 +80,10 @@ double gaussdist() {
         
         return v2*fac;
     } else {
+        
         available = false;
         return gset;
+        
     }
 }
 
@@ -166,6 +164,7 @@ void initialize() {
     
     // Call function to initialize velocities
     initializeVelocities();
+
 }   
 
 
@@ -190,27 +189,28 @@ void MeanSquaredVelocity_and_Kinetic(){
 //   accelleration of each atom. 
 void computeAccelerations_plus_potential(){
     int i, j;
+    double f, rSqd, term2, ri0, ri1, ri2, M0, M1, M2, aux, aux0, aux1, aux2, a0, a1, a2;
     PE = 0.;
     for (i = 0; i < limitM1; i += 3) { // loop over all distinct pairs i, j
-        double a0 = 0.0, a1 = 0.0, a2 = 0.0;
+        a0 = 0.0, a1 = 0.0, a2 = 0.0;
 
-        double ri0 = r[i];
-        double ri1 = r[i + 1];
-        double ri2 = r[i + 2];
-        //#pragma omp_parallel for reduction(+:PE,a[MAXPART]) private(j, M0, M1, M2, rSqd, aux, aux0, aux1, aux2, term2, f, a0, a1, a2)
+        ri0 = r[i];
+        ri1 = r[i + 1];
+        ri2 = r[i + 2];
+
         for (j = i + 3; j < limit; j += 3) {
-            double M0 = ri0 - r[j], M1 = ri1 - r[j + 1], M2 = ri2 - r[j + 2];
+            M0 = ri0 - r[j], M1 = ri1 - r[j + 1], M2 = ri2 - r[j + 2];
 
-            double rSqd = M0 * M0 + M1 * M1 + M2 * M2;
+            rSqd = M0 * M0 + M1 * M1 + M2 * M2;
         
-            double aux = rSqd * rSqd * rSqd;
-            double term2 = 1. / aux;
-            double f = (48. - 24. * aux) / (aux * aux * rSqd);
+            aux = rSqd * rSqd * rSqd;
+            term2 = 1. / aux;
+            f = (48. - 24. * aux) / (aux * aux * rSqd);
             PE += ep_8 * term2 * (term2 - 1.);  
 
-            double aux0 = M0 * f;
-            double aux1 = M1 * f;
-            double aux2 = M2 * f;
+            aux0 = M0 * f;
+            aux1 = M1 * f;
+            aux2 = M2 * f;
             
             a0 += aux0;
             a1 += aux1;
@@ -225,17 +225,16 @@ void computeAccelerations_plus_potential(){
 }
 
 //set all positions in a array to zero
-void clearAmatrix() {
+void clearAmatrix(){
     int i;
-    //#pragma omp parallel for
-    for (i = 0; i < limit; i += 6) {
-        a[i] = 0.0;
-        a[i + 1] = 0.0;
-        a[i + 2] = 0.0;
+    for (i = 0; i < limit;) {  // set all accelerations to zero
+        a[i++] = 0.;
+        a[i++] = 0.;
+        a[i++] = 0.;
 
-        a[i + 3] = 0.0;
-        a[i + 4] = 0.0;
-        a[i + 5] = 0.0;
+        a[i++] = 0.;
+        a[i++] = 0.;
+        a[i++] = 0.;
     }
 }
 
@@ -275,10 +274,12 @@ double VelocityVerlet(double dt, int iter, FILE *fp) {
             }
         }
     }
+    
     return psum/(6*L*L);
 }
 
 int main(){
+
     //  variable delcarations
     int i;
     double dt, Vol, Temp, Press, Pavg, Tavg, rho;
@@ -286,6 +287,7 @@ int main(){
     double gc, Z;
     char prefix[1000], tfn[1000], ofn[1000], afn[1000];
     FILE *tfp, *ofp, *afp;
+    
     
     printf("\n  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
     printf("                  WELCOME TO WILLY P CHEM MD!\n");
@@ -320,6 +322,7 @@ int main(){
     //  Edit these factors to be computed in terms of basic properties in natural units of
     //  the gas being simulated
     
+    
     printf("\n  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
     printf("  WHICH NOBLE GAS WOULD YOU LIKE TO SIMULATE? (DEFAULT IS ARGON)\n");
     printf("\n  FOR HELIUM,  TYPE 'He' THEN PRESS 'return' TO CONTINUE\n");
@@ -331,36 +334,54 @@ int main(){
     scanf("%s",atype);
     
     if (strcmp(atype,"He")==0) {
+        
         VolFac = 1.8399744000000005e-29;
         PressFac = 8152287.336171632;
         TempFac = 10.864459551225972;
-        timefac = 1.7572698825166272e-12;   
-    }else if (strcmp(atype,"Ne")==0) {
+        timefac = 1.7572698825166272e-12;
+        
+    }
+    else if (strcmp(atype,"Ne")==0) {
+        
         VolFac = 2.0570823999999997e-29;
         PressFac = 27223022.27659913;
         TempFac = 40.560648991243625;
         timefac = 2.1192341945685407e-12;
-    }else if (strcmp(atype,"Ar")==0) {
+        
+    }
+    else if (strcmp(atype,"Ar")==0) {
+        
         VolFac = 3.7949992920124995e-29;
         PressFac = 51695201.06691862;
         TempFac = 142.0950000000000;
         timefac = 2.09618e-12;
-    }else if (strcmp(atype,"Kr")==0) {
+        //strcpy(atype,"Ar");
+        
+    }
+    else if (strcmp(atype,"Kr")==0) {
+        
         VolFac = 4.5882712000000004e-29;
         PressFac = 59935428.40275003;
         TempFac = 199.1817584391428;
         timefac = 8.051563913585078e-13;
-    }else if (strcmp(atype,"Xe")==0) {
+        
+    }
+    else if (strcmp(atype,"Xe")==0) {
+        
         VolFac = 5.4872e-29;
         PressFac = 70527773.72794868;
         TempFac = 280.30305642163006;
         timefac = 9.018957925790732e-13;
-    }else {
+        
+    }
+    else {
+        
         VolFac = 3.7949992920124995e-29;
         PressFac = 51695201.06691862;
         TempFac = 142.0950000000000;
         timefac = 2.09618e-12;
         strcpy(atype,"Ar");
+        
     }
     printf("\n  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
     printf("\n                     YOU ARE SIMULATING %s GAS! \n",atype);
@@ -459,6 +480,7 @@ int main(){
     fprintf(ofp,"  time (s)              T(t) (K)              P(t) (Pa)           Kinetic En. (n.u.)     Potential En. (n.u.) Total En. (n.u.)\n");
     printf("  PERCENTAGE OF CALCULATION COMPLETE:\n  [");
     for (i=0; i<NumTime+1; i++) {
+        
         //  This just prints updates on progress of the calculation for the users convenience
         if (i==tenp) printf(" 10 |");
         else if (i==2*tenp) printf(" 20 |");
@@ -471,6 +493,7 @@ int main(){
         else if (i==9*tenp) printf(" 90 |");
         else if (i==10*tenp) printf(" 100 ]\n");
         fflush(stdout);
+        
         
         // This updates the positions and velocities using Newton's Laws
         // Also computes the Pressure as the sum of momentum changes from wall collisions / timestep
@@ -501,6 +524,8 @@ int main(){
         Pavg += Press;
         
         fprintf(ofp,"  %8.4e  %20.8f  %20.8f %20.8f  %20.8f  %20.8f \n",i*dt*timefac,Temp,Press,KE, PE, KE+PE);
+        
+        
     }
     
     // Because we have calculated the instantaneous temperature and pressure,
@@ -523,6 +548,9 @@ int main(){
     printf("\n  THE COMPRESSIBILITY (unitless):          %15.5f \n",Z);
     printf("\n  TOTAL VOLUME (m^3):                      %10.5e \n",Vol*VolFac);
     printf("\n  NUMBER OF PARTICLES (unitless):          %i \n", N);
+    
+    
+    
     
     fclose(tfp);
     fclose(ofp);
