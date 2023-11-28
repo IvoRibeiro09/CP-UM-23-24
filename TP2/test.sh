@@ -1,11 +1,11 @@
 #!/bin/bash
-#SBATCH --ntasks=64
+#SBATCH --ntasks=40
 #SBATCH --time=00:10:00
 #SBATCH --partition=cpar
 #SBATCH --exclusive
 
 
-threads=(32 36 40 44 48 52 56 60 64)
+threads=(5 10 15 20 25 30 32 35 38 40 44)
 
 
 for nthreads in "${threads[@]}"

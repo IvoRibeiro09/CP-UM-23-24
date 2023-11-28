@@ -1,6 +1,6 @@
 CC = gcc
 SRC = src/
-CFLAGS = -O3 -fopenmp -ftree-vectorize -msse4 -mavx -pg 
+CFLAGS = -O3 -ftree-vectorize -msse4 -mavx -pg 
 
 
 .DEFAULT_GOAL = all
@@ -22,14 +22,14 @@ runseq: MDseq.exe
 	./MDseq.exe < inputdata.txt
 
 runpar: MDpar.exe
-	export OMP_NUM_THREADS=16;\
+	export OMP_NUM_THREADS=44;\
 	./MDpar.exe < inputdata.txt
 
 runseqperf: MDseq.exe
-	 perf stat ./MDseq.exe < inputdata.txt
+	srun --partition=cpar perf stat ./MDseq.exe < inputdata.txt
 
 runparperf: MDpar.exe
-	export OMP_NUM_THREADS=16;\
+	export OMP_NUM_THREADS=44;\
 	 perf stat ./MDpar.exe < inputdata.txt
 
 test: 

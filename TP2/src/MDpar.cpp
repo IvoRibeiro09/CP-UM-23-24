@@ -28,37 +28,30 @@
 #include <string.h>
 #include <cmath>
 
-//  Lennard-Jones parameters in natural units!
-const int N = 5000;// Number of particles
-const int ep_8 = 8;
-const int MAXPART = 15000;
-const int limit = 15000;
-const int limitM1 = 14997;
+// Number of particles
+const int N = 5000;
+// Vector's SIZE and vectorś size minus one
+const int VECSIZE = 15000;
+const int VECSIZEM1 = 14997;
+
+//  Vectors!
+//  Vector for position
+double r[VECSIZE];
+//  Vector for velocity
+double v[VECSIZE];
+//  Vector for acceleration
+double a[VECSIZE];
+//  Vector for force
+double F[VECSIZE];
+
+// atom type
+char atype[10];
 
 double NA = 6.022140857e23;
 double kBSI = 1.38064852e-23;  // m^2*kg/(s^2*K)
-double m = 1.;
-double kB = 1.;
-
-double PE;
-
-//  Size of box, which will be specified in natural units
-double L;
 
 //  Initial Temperature in Natural Units
 double Tinit;  //2;
-
-//  Vectors!
-//  Position
-double r[MAXPART];
-//  Velocity
-double v[MAXPART];
-//  Acceleration
-double a[MAXPART];
-//  Force
-double F[MAXPART];
-// atom type
-char atype[10];
 
 //  Numerical recipes Gaussian distribution number generator
 double gaussdist() {
@@ -75,19 +68,16 @@ double gaussdist() {
         fac = sqrt(-2.0 * log(rsq) / rsq);
         gset = v1 * fac;
         available = true;
-        
         return v2*fac;
     } else {
-        
         available = false;
         return gset;
-        
     }
 }
 
 void initializeVelocities() {
     int i;
-    for (i=0; i < limit;) {
+    for (i=0; i < VECSIZE;) {
         v[i++] = gaussdist();
         v[i++] = gaussdist();
         v[i++] = gaussdist();
@@ -97,20 +87,20 @@ void initializeVelocities() {
     // Compute center-of-mas velocity according to the formula above
     double vCM[3] = {0, 0, 0};
     
-    for (i=0; i < limit;) {
-        vCM[0] += m*v[i++];
-        vCM[1] += m*v[i++];
-        vCM[2] += m*v[i++];
+    for (i=0; i < VECSIZE;) {
+        vCM[0] += v[i++];
+        vCM[1] += v[i++];
+        vCM[2] += v[i++];
     }
     
-    vCM[0] /= N*m;
-    vCM[1] /= N*m;
-    vCM[2] /= N*m;
+    vCM[0] /= N;
+    vCM[1] /= N;
+    vCM[2] /= N;
     //  Subtract out the center-of-mass velocity from the
     //  velocity of each particle... effectively set the
     //  center of mass velocity to zero so that the system does
     //  not drift in space!
-    for (i=0; i < limit;) {
+    for (i=0; i < VECSIZE;) {
         v[i++] -= vCM[0];
         v[i++] -= vCM[1];
         v[i++] -= vCM[2];
@@ -120,20 +110,20 @@ void initializeVelocities() {
     //  by a factor which is consistent with our initial temperature, Tinit
     double vSqdSum, lambda;
     vSqdSum=0.;
-    for (i=0; i < limit;i += 3) {
+    for (i=0; i < VECSIZE;i += 3) {
         vSqdSum += (v[i]*v[i] + v[i + 1]*v[i + 1] + v[i + 2]*v[i + 2]);
     }
     
     lambda = sqrt( 3*(N-1)*Tinit/vSqdSum);
     
-    for (i=0; i < limit;) {
+    for (i=0; i < VECSIZE;) {
         v[i++] *= lambda;
         v[i++] *= lambda;
         v[i++] *= lambda;
     }
 }
 
-void initialize() {
+void initialize(double L) {
     int i, j, n, p, k;
     double pos;
     
@@ -149,8 +139,7 @@ void initialize() {
     for (i=0; i<n; i++) {
         for (j=0; j<n; j++) {
             for (k=0; k<n; k++) {
-                if (p<N) {
-                    
+                if (p<N) {  
                     r[p*3+0] = (i + 0.5)*pos;
                     r[p*3+1] = (j + 0.5)*pos;
                     r[p*3+2] = (k + 0.5)*pos;
@@ -159,19 +148,16 @@ void initialize() {
             }
         }
     }
-    
     // Call function to initialize velocities
     initializeVelocities();
-
 }   
-
 
 //  Function to calculate the averaged velocity squared
 //  Function to calculate the kinetic energy of the system
 double MeanSquaredVelocity_and_Kinetic(){
     double velo = 0.;
     #pragma omp parallel for schedule(runtime) reduction(+:velo)
-    for(int i=0; i < limit; i++){
+    for(int i=0; i < VECSIZE; i++){
         velo += v[i]*v[i];
     }
     return velo;
@@ -181,15 +167,15 @@ double MeanSquaredVelocity_and_Kinetic(){
 //   Uses the derivative of the Lennard-Jones potential to calculate
 //   the forces on each atom.  Then uses a = F/m to calculate the
 //   accelleration of each atom. 
-void computeAccelerations_plus_potential(){
+double computeAccelerations_plus_potential(){
     double Pot = 0.;
 
-    #pragma omp parallel for schedule(runtime) reduction(+:Pot,a[:limit]) 
-    for (int i = 0; i < limitM1;i +=3) { // loop over all distinct pairs i, j
+    #pragma omp parallel for schedule(runtime) reduction(+:Pot,a[:VECSIZE]) 
+    for (int i = 0; i < VECSIZEM1; i+=3) { // loop over all distinct pairs i, j
         double a0 = 0.0, a1 = 0.0, a2 = 0.0;
         double ri0 = r[i], ri1 = r[i + 1], ri2 = r[i + 2];
 
-        for (int j = i + 3; j < limit;j +=3) {
+        for (int j = i + 3; j < VECSIZE; j+=3) {
             double M0 = ri0 - r[j], M1 = ri1 - r[j + 1], M2 = ri2 - r[j + 2];
 
             double rSqd = M0 * M0 + M1 * M1 + M2 * M2;
@@ -213,67 +199,64 @@ void computeAccelerations_plus_potential(){
         a[i+1] += a1;
         a[i+2] += a2;
     }
-    PE = Pot * ep_8;
+    return Pot * 8;
 }
 
 //set all positions in a array to zero
 void clearAmatrix(){
     #pragma omp parallel for schedule(runtime)
-    for (int i = 0; i < limit;i++) {  // set all accelerations to zero
+    for (int i = 0; i < VECSIZE; i++) {  // set all accelerations to zero
         a[i] = 0.;
     }
 }
 
-// returns sum of dv/dt*m/A (aka Pressure) from elastic collisions with walls
-double VelocityVerlet(double dt, int iter, FILE *fp) {
-    double psum = 0.;
-    int i, j;
-    
-    //  Compute accelerations from forces at current position
-    // this call was removed (commented) for predagogical reasons
-    //computeAccelerations();
-    //  Update positions and velocity with current velocity and acceleration
-    //printf("  Updated Positions!\n");
-    for (i=0; i < limit; i +=3) {
-        for (j=0; j<3; j++) {
-            r[i+j] += v[i+j]*dt + 0.5*a[i+j]*dt*dt;
-            
-            v[i+j] += 0.5*a[i+j]*dt;
-        }
-        //printf("  %i  %6.4e   %6.4e   %6.4e\n",i,r[i][0],r[i][1],r[i][2]);
+//  Update positions and velocity with current velocity and acceleration
+void UpdatePossitions_velocity(double dt){
+    #pragma omp parallel for schedule(runtime)
+    for(int i=0; i < VECSIZE; i++){
+        r[i] += (v[i] + 0.5*a[i]*dt)*dt;
+        v[i] += 0.5*a[i]*dt;
     }
-    //  Update accellerations from updated positions
-    clearAmatrix();
-    computeAccelerations_plus_potential();
-    //  Update velocity with updated acceleration
-    for (i=0; i < limit; i +=3) {
-        for (j=0; j<3; j++) {
-            v[i+j] += 0.5*a[i+j]*dt;
-            // Elastic walls
-            if (r[i+j]<0.) {
-                v[i+j] *=-1.; //- elastic walls
-                psum += 2*m*fabs(v[i+j])/dt;  // contribution to pressure from "left" walls
-            }
-            if (r[i+j]>=L) {
-                v[i+j]*=-1.;  //- elastic walls
-                psum += 2*m*fabs(v[i+j])/dt;  // contribution to pressure from "right" walls
-            }
-        }
-    }
-    
-    return psum/(6*L*L);
 }
 
-int main(){
+double absoluteValue(double x) {
+    return (x < 0) ? -x : x;
+}
 
+// returns sum of dv/dt*m/A (aka Pressure) from elastic collisions with walls
+double VelocityVerlet(double dt, double L){
+    double psum = 0.;
+    //  Update velocity with updated acceleration
+    #pragma omp parallel for schedule(runtime) reduction(+:psum)
+    for (int i=0; i < VECSIZE; i++){
+        v[i] += 0.5 * a[i] * dt;
+        // Elastic walls
+        if (r[i] < 0. || r[i] >= L){
+            v[i] *= -1.;
+            psum += absoluteValue(v[i])/dt;  // Contribution to pressure from walls
+        }
+    }
+    return psum / (3 * L * L);
+}
+
+// Functions
+double gaussdist();
+void initializeVelocities();
+void initialize(double L);
+double MeanSquaredVelocity_and_Kinetic();
+double computeAccelerations_plus_potential();
+void clearAmatrix();
+void UpdatePossitions_velocity(double dt);
+double VelocityVerlet(double dt, double L);
+
+int main(){
     //  variable delcarations
     int i;
     double dt, Vol, Temp, Press, Pavg, Tavg, rho;
     double VolFac, TempFac, PressFac, timefac;
-    double gc, Z, mvs, KE;
+    double gc, Z, mvs, KE, PE, L;
     char prefix[1000], tfn[1000], ofn[1000], afn[1000];
     FILE *tfp, *ofp, *afp;
-    
     
     printf("\n  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
     printf("                  WELCOME TO WILLY P CHEM MD!\n");
@@ -290,7 +273,6 @@ int main(){
     printf("\n  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
     printf("                  TITLE ENTERED AS '%s'\n",prefix);
     printf("  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
-    
     /*     Table of values for Argon relating natural units to SI units:
      *     These are derived from Lennard-Jones parameters from the article
      *     "Liquid argon: Monte carlo and molecular dynamics calculations"
@@ -307,8 +289,6 @@ int main(){
     //  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     //  Edit these factors to be computed in terms of basic properties in natural units of
     //  the gas being simulated
-    
-    
     printf("\n  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
     printf("  WHICH NOBLE GAS WOULD YOU LIKE TO SIMULATE? (DEFAULT IS ARGON)\n");
     printf("\n  FOR HELIUM,  TYPE 'He' THEN PRESS 'return' TO CONTINUE\n");
@@ -319,60 +299,36 @@ int main(){
     printf("  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
     scanf("%s",atype);
     
-    if (strcmp(atype,"He")==0) {
-        
+    if (strcmp(atype,"He")==0) { 
         VolFac = 1.8399744000000005e-29;
         PressFac = 8152287.336171632;
         TempFac = 10.864459551225972;
-        timefac = 1.7572698825166272e-12;
-        
-    }
-    else if (strcmp(atype,"Ne")==0) {
-        
+        timefac = 1.7572698825166272e-12; 
+    }else if (strcmp(atype,"Ne")==0) { 
         VolFac = 2.0570823999999997e-29;
         PressFac = 27223022.27659913;
         TempFac = 40.560648991243625;
-        timefac = 2.1192341945685407e-12;
-        
-    }
-    else if (strcmp(atype,"Ar")==0) {
-        
-        VolFac = 3.7949992920124995e-29;
-        PressFac = 51695201.06691862;
-        TempFac = 142.0950000000000;
-        timefac = 2.09618e-12;
-        //strcpy(atype,"Ar");
-        
-    }
-    else if (strcmp(atype,"Kr")==0) {
-        
+        timefac = 2.1192341945685407e-12;  
+    }else if (strcmp(atype,"Kr")==0) {
         VolFac = 4.5882712000000004e-29;
         PressFac = 59935428.40275003;
         TempFac = 199.1817584391428;
-        timefac = 8.051563913585078e-13;
-        
-    }
-    else if (strcmp(atype,"Xe")==0) {
-        
+        timefac = 8.051563913585078e-13; 
+    }else if (strcmp(atype,"Xe")==0) {
         VolFac = 5.4872e-29;
         PressFac = 70527773.72794868;
         TempFac = 280.30305642163006;
         timefac = 9.018957925790732e-13;
-        
-    }
-    else {
-        
+    }else {
         VolFac = 3.7949992920124995e-29;
         PressFac = 51695201.06691862;
         TempFac = 142.0950000000000;
         timefac = 2.09618e-12;
         strcpy(atype,"Ar");
-        
     }
     printf("\n  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
     printf("\n                     YOU ARE SIMULATING %s GAS! \n",atype);
     printf("\n  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
-    
     printf("\n  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
     printf("\n  YOU WILL NOW ENTER A FEW SIMULATION PARAMETERS\n");
     printf("  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
@@ -399,9 +355,9 @@ int main(){
     Vol /= VolFac;
     
     //  Limiting N to MAXPART for practical reasons
-    if (N>=MAXPART) {
+    if (N >= VECSIZE) {
         
-        printf("\n\n\n  MAXIMUM NUMBER OF PARTICLES IS %i\n\n  PLEASE ADJUST YOUR INPUT FILE ACCORDINGLY \n\n", MAXPART);
+        printf("\n\n\n  MAXIMUM NUMBER OF PARTICLES IS %i\n\n  PLEASE ADJUST YOUR INPUT FILE ACCORDINGLY \n\n", VECSIZE);
         exit(0);
         
     }
@@ -420,7 +376,6 @@ int main(){
     // Vol = L*L*L;
     // Length of the box in natural units:
     L = pow(Vol,(1./3));
-
     
     //  Files that we can write different quantities to
     tfp = fopen(tfn,"w");     //  The MD trajectory, coordinates of every particle at each timestep
@@ -428,31 +383,27 @@ int main(){
     afp = fopen(afn,"w");    //  Average T, P, gc, etc from the simulation
     
     int NumTime;
-    if (strcmp(atype,"He")==0) {
-        
+    if (strcmp(atype,"He")==0){
         // dt in natural units of time s.t. in SI it is 5 f.s. for all other gasses
         dt = 0.2e-14/timefac;
         //  We will run the simulation for NumTime timesteps.
         //  The total time will be NumTime*dt in natural units
         //  And NumTime*dt multiplied by the appropriate conversion factor for time in seconds
         NumTime=50000;
-    }
-    else {
+    }else {
         dt = 0.5e-14/timefac;
         NumTime=200;
-        
     }
     
     //  Put all the atoms in simple crystal lattice and give them random velocities
     //  that corresponds to the initial temperature we have specified
-    initialize();
+    initialize(L);
     
     //  Based on their positions, calculate the ininial intermolecular forces
     //  The accellerations of each particle will be defined from the forces and their
     //  mass, and this will allow us to update their positions via Newton's law
     computeAccelerations_plus_potential();
 
-    
     // Print number of particles to the trajectory file
     fprintf(tfp,"%i\n",N);
     
@@ -460,8 +411,6 @@ int main(){
     //  The variables need to be set to zero initially
     Pavg = 0;
     Tavg = 0;
-    
-    
     int tenp = floor(NumTime/10);
     fprintf(ofp,"  time (s)              T(t) (K)              P(t) (Pa)           Kinetic En. (n.u.)     Potential En. (n.u.) Total En. (n.u.)\n");
     printf("  PERCENTAGE OF CALCULATION COMPLETE:\n  [");
@@ -484,7 +433,11 @@ int main(){
         // This updates the positions and velocities using Newton's Laws
         // Also computes the Pressure as the sum of momentum changes from wall collisions / timestep
         // which is a Kinetic Theory of gasses concept of Pressure
-        Press = VelocityVerlet(dt, i+1, tfp);
+        //  Update accellerations from updated positions
+        UpdatePossitions_velocity(dt);
+        clearAmatrix();
+        PE = computeAccelerations_plus_potential();
+        Press = VelocityVerlet(dt, L);
         Press *= PressFac;
         
         //  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -492,27 +445,19 @@ int main(){
         //  Instantaneous mean velocity squared, Temperature, Pressure
         //  Potential, and Kinetic Energy
         //  We would also like to use the IGL to try to see if we can extract the gas constant
+        double mvs_KE = MeanSquaredVelocity_and_Kinetic();
         //MeanSquaredVelocity();
         //Kinetic();
-        mvs = MeanSquaredVelocity_and_Kinetic()/N;
-        KE = MeanSquaredVelocity_and_Kinetic()*0.5;
+        mvs = mvs_KE/N;
+        KE = mvs_KE*0.5;
         //Potential();
         
         // Temperature from Kinetic Theory
-        Temp = m*mvs/(3*kB) * TempFac;
-        
-        // Instantaneous gas constant and compressibility - not well defined because
-        // pressure may be zero in some instances because there will be zero wall collisions,
-        // pressure may be very high in some instances because there will be a number of collisions
-        gc = NA*Press*(Vol*VolFac)/(N*Temp);
-        Z  = Press*(Vol*VolFac)/(N*kBSI*Temp);
-        
+        Temp = mvs/(3)* TempFac;
         Tavg += Temp;
         Pavg += Press;
         
-        fprintf(ofp,"  %8.4e  %20.8f  %20.8f %20.8f  %20.8f  %20.8f \n",i*dt*timefac,Temp,Press,KE, PE, KE+PE);
-        
-        
+        fprintf(ofp,"  %8.4e  %20.8f  %20.8f %20.8f  %20.8f  %20.8f \n",i*dt*timefac,Temp,Press,KE, PE, KE+PE); 
     }
     
     // Because we have calculated the instantaneous temperature and pressure,
