@@ -217,35 +217,19 @@ void computeAccelerations_plus_potential(){
     PE = PE*8;
 }
 
-//set all positions in a array to zero
-void clearAmatrix(){
-    int i;
-    for (i = 0; i < VECSIZE;) {  // set all accelerations to zero
-        a[i++] = 0.;
-        a[i++] = 0.;
-        a[i++] = 0.;
-
-        a[i++] = 0.;
-        a[i++] = 0.;
-        a[i++] = 0.;
-    }
-}
-
 // returns sum of dv/dt*m/A (aka Pressure) from elastic collisions with walls
 double VelocityVerlet(double dt) {
     double psum = 0.;
-    
     //  Compute accelerations from forces at current position
     // this call was removed (commented) for predagogical reasons
-    //computeAccelerations();
     //  Update positions and velocity with current velocity and acceleration
     //printf("  Updated Positions!\n");
     for (int i=0; i < VECSIZE; i++) { 
         r[i] += (v[i] + 0.5*a[i]*dt)*dt;     
         v[i] += 0.5*a[i]*dt;
+        a[i] = 0.; //set all positions in a array to zero
     }
     //  Update accellerations from updated positions
-    clearAmatrix();
     computeAccelerations_plus_potential();
     //  Update velocity with updated acceleration
     for (int i=0; i < VECSIZE; i++) {
