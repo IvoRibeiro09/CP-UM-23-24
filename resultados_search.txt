@@ -1,0 +1,114 @@
+pragam na VelocityVerlet
+
+5
+
+real	0m9.006s
+user	0m44.975s
+sys	0m0.005s
+10
+
+real	0m4.844s
+user	0m48.351s
+sys	0m0.013s
+15
+
+real	0m3.587s
+user	0m53.682s
+sys	0m0.008s
+20
+
+real	0m2.943s
+user	0m58.438s
+sys	0m0.018s
+25
+
+real	0m2.927s
+user	1m11.722s
+sys	0m0.009s
+30
+
+real	0m2.748s
+user	1m22.052s
+sys	0m0.036s
+32
+
+real	0m2.702s
+user	1m26.177s
+sys	0m0.016s
+35
+
+real	1m32.657s
+user	1m32.232s
+sys	0m0.041s
+38
+
+real	0m2.604s
+user	1m38.210s
+sys	0m0.038s
+40
+
+real	0m2.562s
+user	1m42.129s
+sys	0m0.027s
+44
+
+real	0m2.702s
+user	1m34.168s
+sys	0m0.557s
+
+sem MeanSquaredVelocity
+5
+
+real	0m9.510s
+user	0m47.467s
+sys	0m0.005s
+10
+
+real	0m5.049s
+user	0m50.353s
+sys	0m0.007s
+15
+
+real	0m3.601s
+user	0m53.810s
+sys	0m0.018s
+20
+
+real	0m2.955s
+user	0m58.811s
+sys	0m0.025s
+25
+
+real	0m2.867s
+user	1m11.328s
+sys	0m0.043s
+30
+
+real	0m2.759s
+user	1m21.990s
+sys	0m0.049s
+32
+
+real	0m2.708s
+user	1m26.195s
+sys	0m0.043s
+35
+
+real	0m2.669s
+user	1m32.165s
+sys	0m0.059s
+38
+
+real	0m2.605s
+user	1m38.238s
+sys	0m0.056s
+40
+
+real	0m2.586s
+user	1m42.234s
+sys	0m0.056s
+44
+
+real	0m2.715s
+user	1m34.358s
+sys	0m0.679s

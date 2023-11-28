@@ -192,7 +192,6 @@ void computeAccelerations_plus_potential(){
 
         for (j = i + 3; j < VECSIZE;) {
             double M0 = ri0 - r[j], M1 = ri1 - r[j + 1], M2 = ri2 - r[j + 2];
-
             double rSqd = M0 * M0 + M1 * M1 + M2 * M2;
         
             double aux = rSqd * rSqd * rSqd;
@@ -243,7 +242,6 @@ double VelocityVerlet(double dt) {
             v[i]*=-1.;  //- elastic walls
             psum += fabs(v[i])/dt;  // contribution to pressure from "right" walls
         }
-        
     }
     return psum/(3*L*L);
 }
@@ -345,7 +343,6 @@ int main(){
     // Convert initial temperature from kelvin to natural units
     Tinit /= TempFac;
     
-    
     printf("\n\n  ENTER THE NUMBER DENSITY IN moles/m^3\n");
     printf("  FOR REFERENCE, NUMBER DENSITY OF AN IDEAL GAS AT STP IS ABOUT 40 moles/m^3\n");
     printf("  NUMBER DENSITY OF LIQUID ARGON AT 1 ATM AND 87 K IS ABOUT 35000 moles/m^3\n");
@@ -390,9 +387,7 @@ int main(){
     }else {
         dt = 0.5e-14/timefac;
         NumTime=200;
-        
     }
-    
     //  Put all the atoms in simple crystal lattice and give them random velocities
     //  that corresponds to the initial temperature we have specified
     initialize();
