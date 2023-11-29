@@ -25,10 +25,10 @@ runpar: MDpar.exe
 	export OMP_NUM_THREADS=40;\
 	./MDpar.exe < inputdata.txt
 
-runseqperf: MDseq.exe
+runseqWperf: MDseq.exe
 	srun --partition=cpar perf stat ./MDseq.exe < inputdata.txt
 
-runparperf: MDpar.exe
+runparWperf: MDpar.exe
 	export OMP_NUM_THREADS=40;\
 	srun --partition=cpar perf stat ./MDpar.exe < inputdata.txt
 

@@ -27,6 +27,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <cmath>
+#include <omp.h>
 
 // Number of particles
 const int N = 5000;
@@ -175,6 +176,7 @@ void MeanSquaredVelocity_and_Kinetic(){
 //   accelleration of each atom. 
 void computeAccelerations_plus_potential(){
     PE = 0.;
+    #pragma omp parallel for schedule(runtime) reduction(+:PE,a[:VECSIZE]) 
     for (int i = 0; i < VECSIZEM1; i+=3) { // loop over all distinct pairs i, j
         double a0 = 0.0, a1 = 0.0, a2 = 0.0;
         double ri0 = r[i], ri1 = r[i + 1], ri2 = r[i + 2];
