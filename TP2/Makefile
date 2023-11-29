@@ -1,6 +1,6 @@
 CC = gcc
 SRC = src/
-CFLAGS = -O3 -ftree-vectorize -msse4 -mavx -pg 
+CFLAGS = -O3 -ftree-vectorize -msse4 -mavx -march=native -funroll-loops -finline-functions -fomit-frame-pointer -pg
 
 
 .DEFAULT_GOAL = all
@@ -22,15 +22,15 @@ runseq: MDseq.exe
 	./MDseq.exe < inputdata.txt
 
 runpar: MDpar.exe
-	export OMP_NUM_THREADS=44;\
+	export OMP_NUM_THREADS=40;\
 	./MDpar.exe < inputdata.txt
 
 runseqperf: MDseq.exe
 	srun --partition=cpar perf stat ./MDseq.exe < inputdata.txt
 
 runparperf: MDpar.exe
-	export OMP_NUM_THREADS=44;\
-	 perf stat ./MDpar.exe < inputdata.txt
+	export OMP_NUM_THREADS=1;\
+	srun --partition=cpar perf stat ./MDpar.exe < inputdata.txt
 
 test: 
 	@diff -s cp_average.txt Correct_res/cp_average.txt

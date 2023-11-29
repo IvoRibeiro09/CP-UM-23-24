@@ -27,6 +27,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <cmath>
+#include <omp.h>
 
 // Number of particles
 const int N = 5000;
@@ -49,11 +50,7 @@ char atype[10];
 
 double NA = 6.022140857e23;
 double kBSI = 1.38064852e-23;  // m^2*kg/(s^2*K)
-
-
 double PE, KE, mvs;
-
-
 //  Size of box, which will be specified in natural units
 double L;
 
@@ -78,10 +75,8 @@ double gaussdist() {
         
         return v2*fac;
     } else {
-        
         available = false;
         return gset;
-        
     }
 }
 
@@ -159,10 +154,8 @@ void initialize() {
             }
         }
     }
-    
     // Call function to initialize velocities
     initializeVelocities();
-
 }   
 
 
@@ -170,9 +163,8 @@ void initialize() {
 //  Function to calculate the kinetic energy of the system
 void MeanSquaredVelocity_and_Kinetic(){
     double velo = 0.;
-    //#pragma omp parallel for schedule(runtime) reduction(+:velo)
-    for(int i=0; i < VECSIZE; i += 3){
-        velo += v[i]*v[i] + v[i + 1]*v[i + 1] + v[i + 2]*v[i + 2];
+    for(int i=0; i < VECSIZE; i++){
+        velo += v[i]*v[i];
     }
     KE = velo/2;
     mvs = velo/N;
@@ -207,7 +199,7 @@ void computeAccelerations_plus_potential(){
             a2 += aux2;
             
             a[j] -= aux0, a[j+1] -= aux1, a[j+2] -= aux2;
-        }
+        } 
         a[i] += a0;
         a[i+1] += a1;
         a[i+2] += a2;
@@ -217,33 +209,28 @@ void computeAccelerations_plus_potential(){
 
 // returns sum of dv/dt*m/A (aka Pressure) from elastic collisions with walls
 double VelocityVerlet(double dt) {
-    double psum = 0.;
+    double psum = 0.0, half_dt = 0.5*dt;
     //  Compute accelerations from forces at current position
-    // this call was removed (commented) for predagogical reasons
+    // this call was removed (commented) for prledagogical reasons
     //  Update positions and velocity with current velocity and acceleration
-    #pragma omp parallel for schedule(runtime)
-    for (int i=0; i < VECSIZE; i++) { 
-        r[i] += (v[i] + 0.5*a[i]*dt)*dt;     
-        v[i] += 0.5*a[i]*dt;
-        a[i] = 0.; //set all positions in a array to zero
+    for (int i=0; i < VECSIZE; i++) {
+        double comun_calc1 = a[i] * half_dt;
+        a[i] = 0.0; //set all positions in a array to zero
+        r[i] += (v[i] + comun_calc1) * dt;     
+        v[i] += comun_calc1;
     }
     //  Update accellerations from updated positions
     computeAccelerations_plus_potential();
     //  Update velocity with updated acceleration
-    #pragma omp parallel for schedule(runtime) reduction(+:psum)
-    for (int i=0; i < VECSIZE; i++) {
-        v[i] += 0.5*a[i]*dt;
+    for (int i=0; i < VECSIZE; i++){
+        v[i] += a[i] * half_dt;
         // Elastic walls
-        if (r[i]<0.) {
+        if (r[i]<0. || r[i]>=L) {
             v[i] *=-1.; //- elastic walls
-            psum += fabs(v[i])/dt;  // contribution to pressure from "left" walls
-        }
-        if (r[i]>=L) {
-            v[i]*=-1.;  //- elastic walls
-            psum += fabs(v[i])/dt;  // contribution to pressure from "right" walls
+            psum += fabs(v[i]);  // contribution to pressure from "left" walls
         }
     }
-    return psum/(3*L*L);
+    return psum/(3*L*L*dt);
 }
 
 int main(){
