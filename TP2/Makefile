@@ -1,6 +1,6 @@
 CC = gcc
 SRC = src/
-CFLAGS = -O3 -ftree-vectorize -msse4 -mavx -march=native -funroll-loops -finline-functions -fomit-frame-pointer -pg
+CFLAGS = -O3 -ftree-vectorize -msse4 -mavx -march=native -funroll-loops -finline-functions 
 
 
 .DEFAULT_GOAL = all
@@ -9,11 +9,11 @@ all: MDseq.exe MDpar.exe
 
 MDseq.exe: $(SRC)/MDseq.cpp
 	module load gcc/11.2.0;\
-	$(CC) $(CFLAGS) $(SRC)MDseq.cpp -lm -o MDseq.exe
+	$(CC) $(CFLAGS)-pg  $(SRC)MDseq.cpp -lm -o MDseq.exe
 
 MDpar.exe: $(SRC)/MDpar.cpp
 	module load gcc/11.2.0;\
-	$(CC) $(CFLAGS) $(SRC)MDpar.cpp -lm -fopenmp -o MDpar.exe
+	$(CC) $(CFLAGS)-fomit-frame-pointer $(SRC)MDpar.cpp -lm -fopenmp -o MDpar.exe
 
 clean:
 	rm -rf slurm* MDpar.exe MDseq.exe gmon.out cp_average.txt cp_output.txt cp_traj.xyz lixo relatorio.txt
