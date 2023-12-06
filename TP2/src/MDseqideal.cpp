@@ -1,3 +1,28 @@
+/*
+ MD.c - a simple molecular dynamics program for simulating real gas properties of Lennard-Jones particles.
+ 
+ Copyright (C) 2016  Jonathan J. Foley IV, Chelsea Sweet, Oyewumi Akinfenwa
+ 
+ This program is free software: you can redistribute it and/or modify
+ it under the terms of the GNU General Public License as published by
+ the Free Software Foundation, either version 3 of the License, or
+ (at your option) any later version.
+ 
+ This program is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU General Public License for more details.
+ 
+ You should have received a copy of the GNU General Public License
+ along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ 
+ Electronic Contact:  foleyj10@wpunj.edu
+ Mail Contact:   Prof. Jonathan Foley
+ Department of Chemistry, William Paterson University
+ 300 Pompton Road
+ Wayne NJ 07470
+ 
+ */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -144,35 +169,6 @@ void MeanSquaredVelocity_and_Kinetic(){
     mvs = velo/N;
 }
 
-/*
-double Pot[12497500];
-double M0plusF[12497500];
-double M1plusF[12497500];
-double M2plusF[12497500];
-void calculateRSQD(){
-    int count = 0;
-    for (int i = 0; i < VECSIZEM1; i+=3) { // loop over all distinct pairs i, j
-        double a0 = 0.0, a1 = 0.0, a2 = 0.0;
-        double ri0 = r[i], ri1 = r[i + 1], ri2 = r[i + 2];
-
-        for (int j = i + 3; j < VECSIZE; j+= 3) {
-            double M0 = ri0 - r[j], M1 = ri1 - r[j + 1], M2 = ri2 - r[j + 2];
-            double rSqd = M0 * M0 + M1 * M1 + M2 * M2;
-        
-            double aux = rSqd * rSqd * rSqd;
-            double term2 = 1. / aux;
-            double f = (48. - 24. * aux) / (aux * aux * rSqd);
-            
-            //guardar o aumento de potencia
-            Pot[count] = term2 * (term2 - 1.);  
-            M0plusF[count] = M0 * f;
-            M1plusF[count] = M1 * f;
-            M2plusF[count] = M2 * f;
-            count++;
-        }
-    }
-}
-*/
 // Function to calculate the potential energy of the system
 //   Uses the derivative of the Lennard-Jones potential to calculate
 //   the forces on each atom.  Then uses a = F/m to calculate the
@@ -209,7 +205,6 @@ void computeAccelerations_plus_potential(){
     PE = PE*8;
 }
 
-
 // returns sum of dv/dt*m/A (aka Pressure) from elastic collisions with walls
 double VelocityVerlet(double dt) {
     double psum = 0.0, half_dt = 0.5*dt;
@@ -223,35 +218,7 @@ double VelocityVerlet(double dt) {
         v[i] += comun_calc1;
     }
     //  Update accellerations from updated positions
-    PE = 0.;
-    for (int i = 0; i < VECSIZEM1; i+=3) { // loop over all distinct pairs i, j
-        double a0 = 0.0, a1 = 0.0, a2 = 0.0;
-        double ri0 = r[i], ri1 = r[i + 1], ri2 = r[i + 2];
-
-        for (int j = i + 3; j < VECSIZE; j+= 3) {
-            double M0 = ri0 - r[j], M1 = ri1 - r[j + 1], M2 = ri2 - r[j + 2];
-            double rSqd = M0 * M0 + M1 * M1 + M2 * M2;
-        
-            double aux = rSqd * rSqd * rSqd;
-            double term2 = 1. / aux;
-            double f = (48. - 24. * aux) / (aux * aux * rSqd);
-            PE += term2 * (term2 - 1.);  
-
-            double aux0 = M0 * f;
-            double aux1 = M1 * f;
-            double aux2 = M2 * f;
-            
-            a0 += aux0;
-            a1 += aux1;
-            a2 += aux2;
-            
-            a[j] -= aux0, a[j+1] -= aux1, a[j+2] -= aux2;
-        } 
-        a[i] += a0;
-        a[i+1] += a1;
-        a[i+2] += a2;
-    }
-    PE = PE*8;
+    computeAccelerations_plus_potential();
     //  Update velocity with updated acceleration
     for (int i=0; i < VECSIZE; i++){
         v[i] += a[i] * half_dt;
@@ -282,9 +249,27 @@ int main(){
     strcat(ofn,"_output.txt");
     strcpy(afn,prefix);
     strcat(afn,"_average.txt");
+    
     printf("\n  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
     printf("                  TITLE ENTERED AS '%s'\n",prefix);
     printf("  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
+    
+    /*     Table of values for Argon relating natural units to SI units:
+     *     These are derived from Lennard-Jones parameters from the article
+     *     "Liquid argon: Monte carlo and molecular dynamics calculations"
+     *     J.A. Barker , R.A. Fisher & R.O. Watts
+     *     Mol. Phys., Vol. 21, 657-673 (1971)
+     *
+     *     mass:     6.633e-26 kg          = one natural unit of mass for argon, by definition
+     *     energy:   1.96183e-21 J      = one natural unit of energy for argon, directly from L-J parameters
+     *     length:   3.3605e-10  m         = one natural unit of length for argon, directly from L-J parameters
+     *     volume:   3.79499-29 m^3        = one natural unit of volume for argon, by length^3
+     *     time:     1.951e-12 s           = one natural unit of time for argon, by length*sqrt(mass/energy)
+     ***************************************************************************************/
+    
+    //  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    //  Edit these factors to be computed in terms of basic properties in natural units of
+    //  the gas being simulated
     printf("\n  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
     printf("  WHICH NOBLE GAS WOULD YOU LIKE TO SIMULATE? (DEFAULT IS ARGON)\n");
     printf("\n  FOR HELIUM,  TYPE 'He' THEN PRESS 'return' TO CONTINUE\n");
@@ -438,6 +423,9 @@ int main(){
         // Temperature from Kinetic Theory
         Temp = mvs/(3) * TempFac;
         
+        // Instantaneous gas constant and compressibility - not well defined because
+        // pressure may be zero in some instances because there will be zero wall collisions,
+        // pressure may be very high in some instances because there will be a number of collisions
         Tavg += Temp;
         Pavg += Press;
         
