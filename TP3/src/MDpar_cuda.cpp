@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <cmath>
+#include <omp.h>
+#include "gpuauxiliar.h"
 
 // Number of particles
 const int N = 5000;
@@ -56,44 +58,31 @@ double gaussdist() {
 
 void initializeVelocities() {
     int i;
-    for (i=0; i < VECSIZE;) {
-        v[i++] = gaussdist();
-        v[i++] = gaussdist();
-        v[i++] = gaussdist();
-    }
-    
-    // Vcm = sum_i^N  m*v_i/  sum_i^N  M
-    // Compute center-of-mas velocity according to the formula above
     double vCM[3] = {0, 0, 0};
-    
-    for (i=0; i < VECSIZE;) {
-        vCM[0] += v[i++];
-        vCM[1] += v[i++];
-        vCM[2] += v[i++];
+    for (i=0; i < VECSIZE;i += 3) {
+        v[i] = gaussdist();
+        v[i+1] = gaussdist();
+        v[i+2] = gaussdist();
+        vCM[0] += v[i];
+        vCM[1] += v[i+1];
+        vCM[2] += v[i+2];
     }
-    
     vCM[0] /= N;
     vCM[1] /= N;
     vCM[2] /= N;
-    //  Subtract out the center-of-mass velocity from the
-    //  velocity of each particle... effectively set the
-    //  center of mass velocity to zero so that the system does
-    //  not drift in space!
-    for (i=0; i < VECSIZE;) {
-        v[i++] -= vCM[0];
-        v[i++] -= vCM[1];
-        v[i++] -= vCM[2];
-    }
-    
+   
     //  Now we want to scale the average velocity of the system
     //  by a factor which is consistent with our initial temperature, Tinit
     double vSqdSum, lambda;
     vSqdSum=0.;
     for (i=0; i < VECSIZE;i += 3) {
+        v[i] -= vCM[0];
+        v[i+1] -= vCM[1];
+        v[i+2] -= vCM[2];
         vSqdSum += (v[i]*v[i] + v[i + 1]*v[i + 1] + v[i + 2]*v[i + 2]);
     }
     
-    lambda = sqrt( 3*(N-1)*Tinit/vSqdSum);
+    lambda = sqrt(3*(N-1)*Tinit/vSqdSum);
     
     for (i=0; i < VECSIZE;) {
         v[i++] *= lambda;
@@ -144,38 +133,10 @@ void MeanSquaredVelocity_and_Kinetic(){
     mvs = velo/N;
 }
 
-void computeAccelerations_plus_potential(){
-    PE = 0.;
-    for (int i = 0; i < VECSIZEM1; i+=3) { // loop over all distinct pairs i, j
-        double a0 = 0.0, a1 = 0.0, a2 = 0.0;
-        double ri0 = r[i], ri1 = r[i + 1], ri2 = r[i + 2];
-
-        for (int j = i + 3; j < VECSIZE; j+= 3) {
-            double M0 = ri0 - r[j], M1 = ri1 - r[j + 1], M2 = ri2 - r[j + 2];
-            double rSqd = M0 * M0 + M1 * M1 + M2 * M2;
-        
-            double aux = rSqd * rSqd * rSqd;
-            double term2 = 1. / aux;
-            double f = (48. - 24. * aux) / (aux * aux * rSqd);
-            PE += term2 * (term2 - 1.);  
-
-            double aux0 = M0 * f;
-            double aux1 = M1 * f;
-            double aux2 = M2 * f;
-            
-            a0 += aux0;
-            a1 += aux1;
-            a2 += aux2;
-            
-            a[j] -= aux0, a[j+1] -= aux1, a[j+2] -= aux2;
-        } 
-        a[i] += a0;
-        a[i+1] += a1;
-        a[i+2] += a2;
-    }
-    PE = PE*8;
-}
-
+// Function to calculate the potential energy of the system
+//   Uses the derivative of the Lennard-Jones potential to calculate
+//   the forces on each atom.  Then uses a = F/m to calculate the
+//   accelleration of each atom.
 
 // returns sum of dv/dt*m/A (aka Pressure) from elastic collisions with walls
 double VelocityVerlet(double dt) {
@@ -184,40 +145,14 @@ double VelocityVerlet(double dt) {
     // this call was removed (commented) for prledagogical reasons
     //  Update positions and velocity with current velocity and acceleration
     for (int i=0; i < VECSIZE; i++) {
-        v[i] += a[i] * half_dt;
-        r[i] += v[i] * dt;     
-        a[i] = 0.0;
+        double comun_calc1 = a[i] * half_dt;
+        a[i] = 0.0; //set all positions in a array to zero
+        r[i] += (v[i] + comun_calc1) * dt;     
+        v[i] += comun_calc1;
     }
     //  Update accellerations from updated positions
-    PE = 0.;
-    for (int i = 0; i < VECSIZEM1; i+=3) { // loop over all distinct pairs i, j
-        double a0 = 0.0, a1 = 0.0, a2 = 0.0;
-        double ri0 = r[i], ri1 = r[i + 1], ri2 = r[i + 2];
-
-        for (int j = i + 3; j < VECSIZE; j+= 3) {
-            double M0 = ri0 - r[j], M1 = ri1 - r[j + 1], M2 = ri2 - r[j + 2];
-            double rSqd = M0 * M0 + M1 * M1 + M2 * M2;
-        
-            double aux = rSqd * rSqd * rSqd;
-            double term2 = 1. / aux;
-            double f = (48. - 24. * aux) / (aux * aux * rSqd);
-            PE += term2 * (term2 - 1.);  
-
-            double aux0 = M0 * f;
-            double aux1 = M1 * f;
-            double aux2 = M2 * f;
-            
-            a0 += aux0;
-            a1 += aux1;
-            a2 += aux2;
-            
-            a[j] -= aux0, a[j+1] -= aux1, a[j+2] -= aux2;
-        } 
-        a[i] += a0;
-        a[i+1] += a1;
-        a[i+2] += a2;
-    }
-    PE = PE*8;
+    //computeAccelerations_plus_potential();
+    computeAccelerations_plus_potential_GPU(r, a, &PE, VECSIZE);
     //  Update velocity with updated acceleration
     for (int i=0; i < VECSIZE; i++){
         v[i] += a[i] * half_dt;
@@ -248,9 +183,27 @@ int main(){
     strcat(ofn,"_output.txt");
     strcpy(afn,prefix);
     strcat(afn,"_average.txt");
+    
     printf("\n  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
     printf("                  TITLE ENTERED AS '%s'\n",prefix);
     printf("  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
+    
+    /*     Table of values for Argon relating natural units to SI units:
+     *     These are derived from Lennard-Jones parameters from the article
+     *     "Liquid argon: Monte carlo and molecular dynamics calculations"
+     *     J.A. Barker , R.A. Fisher & R.O. Watts
+     *     Mol. Phys., Vol. 21, 657-673 (1971)
+     *
+     *     mass:     6.633e-26 kg          = one natural unit of mass for argon, by definition
+     *     energy:   1.96183e-21 J      = one natural unit of energy for argon, directly from L-J parameters
+     *     length:   3.3605e-10  m         = one natural unit of length for argon, directly from L-J parameters
+     *     volume:   3.79499-29 m^3        = one natural unit of volume for argon, by length^3
+     *     time:     1.951e-12 s           = one natural unit of time for argon, by length*sqrt(mass/energy)
+     ***************************************************************************************/
+    
+    //  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    //  Edit these factors to be computed in terms of basic properties in natural units of
+    //  the gas being simulated
     printf("\n  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
     printf("  WHICH NOBLE GAS WOULD YOU LIKE TO SIMULATE? (DEFAULT IS ARGON)\n");
     printf("\n  FOR HELIUM,  TYPE 'He' THEN PRESS 'return' TO CONTINUE\n");
@@ -388,13 +341,25 @@ int main(){
         else if (i==10*tenp) printf(" 100 ]\n");
         fflush(stdout);
         
-        Press = VelocityVerlet(dt) * PressFac;
+        // This updates the positions and velocities using Newton's Laws
+        // Also computes the Pressure as the sum of momentum changes from wall collisions / timestep
+        // which is a Kinetic Theory of gasses concept of Pressure
+        Press = VelocityVerlet(dt);
+        Press *= PressFac;
         
+        //  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        //  Now we would like to calculate somethings about the system:
+        //  Instantaneous mean velocity squared, Temperature, Pressure
+        //  Potential, and Kinetic Energy
+        //  We would also like to use the IGL to try to see if we can extract the gas constant
         MeanSquaredVelocity_and_Kinetic();
         
         // Temperature from Kinetic Theory
         Temp = mvs/(3) * TempFac;
         
+        // Instantaneous gas constant and compressibility - not well defined because
+        // pressure may be zero in some instances because there will be zero wall collisions,
+        // pressure may be very high in some instances because there will be a number of collisions
         Tavg += Temp;
         Pavg += Press;
         

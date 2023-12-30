@@ -3,7 +3,8 @@
 #include <string.h>
 #include <cmath>
 #include <omp.h>
-#include "gpuauxiliar.h"
+//sbatch test.sh
+
 
 // Number of particles
 const int N = 5000;
@@ -13,11 +14,12 @@ const int VECSIZEM1 = 14997;
 
 //  Vectors!
 //  Vector for position
-double r[VECSIZE];
+double r[VECSIZE]; // Preencha com valores reais conforme necessário
+//  Vector for acceleration
+double a[VECSIZE]; // Inicializa com acelerações zero
 //  Vector for velocity
 double v[VECSIZE];
-//  Vector for acceleration
-double a[VECSIZE];
+
 //  Vector for force
 double F[VECSIZE];
 
@@ -26,9 +28,9 @@ char atype[10];
 
 double NA = 6.022140857e23;
 double kBSI = 1.38064852e-23;  // m^2*kg/(s^2*K)
-double PE, KE, mvs;
+double KE, mvs;
 //  Size of box, which will be specified in natural units
-double L;
+
 
 //  Initial Temperature in Natural Units
 double Tinit;  //2;
@@ -91,7 +93,7 @@ void initializeVelocities() {
     }
 }
 
-void initialize() {
+void initialize(double L) {
     int i, j, n, p, k;
     double pos;
     
@@ -108,7 +110,6 @@ void initialize() {
         for (j=0; j<n; j++) {
             for (k=0; k<n; k++) {
                 if (p<N) {
-                    
                     r[p*3+0] = (i + 0.5)*pos;
                     r[p*3+1] = (j + 0.5)*pos;
                     r[p*3+2] = (k + 0.5)*pos;
@@ -125,52 +126,85 @@ void initialize() {
 //  Function to calculate the averaged velocity squared
 //  Function to calculate the kinetic energy of the system
 void MeanSquaredVelocity_and_Kinetic(){
-    double velo = 0.;
-    for(int i=0; i < VECSIZE; i++){
-        velo += v[i]*v[i];
+    double x1=0.0, x2=0.0, x3 =0.0;
+    for(int i=0; i < VECSIZE; i+=3){
+        x1 += v[i]*v[i];
+        x2 += v[i+1]*v[i+1];
+        x3 += v[i+2]*v[i+2];
     }
+    double velo = x1+x2+x3;
     KE = velo/2;
     mvs = velo/N;
 }
 
-// Function to calculate the potential energy of the system
-//   Uses the derivative of the Lennard-Jones potential to calculate
-//   the forces on each atom.  Then uses a = F/m to calculate the
-//   accelleration of each atom.
+//    new code
 
-// returns sum of dv/dt*m/A (aka Pressure) from elastic collisions with walls
-double VelocityVerlet(double dt) {
-    double psum = 0.0, half_dt = 0.5*dt;
-    //  Compute accelerations from forces at current position
-    // this call was removed (commented) for prledagogical reasons
-    //  Update positions and velocity with current velocity and acceleration
-    for (int i=0; i < VECSIZE; i++) {
-        double comun_calc1 = a[i] * half_dt;
-        a[i] = 0.0; //set all positions in a array to zero
-        r[i] += (v[i] + comun_calc1) * dt;     
-        v[i] += comun_calc1;
-    }
-    //  Update accellerations from updated positions
-    //computeAccelerations_plus_potential();
-    computeAccelerations_plus_potential_GPU(r, a, &PE, VECSIZE);
-    //  Update velocity with updated acceleration
+void VelocityVerlet_before(double dt, double half_dt) {
     for (int i=0; i < VECSIZE; i++){
         v[i] += a[i] * half_dt;
-        // Elastic walls
-        if (r[i]<0. || r[i]>=L) {
-            v[i] *=-1.; //- elastic walls
-            psum += fabs(v[i]);  // contribution to pressure from "left" walls
+        r[i] += v[i] * dt;     
+        a[i] = 0.0;
+    }
+}
+
+double Potential_Energy(int i, double ri0, double ri1, double ri2) {
+    double a0 = 0.0, a1 = 0.0, a2 = 0.0, pot = 0.0;
+    int j = i + 3;
+   
+    for (; j < VECSIZE; j+= 3) {
+        double M0 = ri0 - r[j], M1 = ri1 - r[j + 1], M2 = ri2 - r[j + 2];
+        double rSqd = M0 * M0 + M1 * M1 + M2 * M2;
+    
+        double aux = rSqd * rSqd * rSqd;
+        double term2 = 1. / aux;
+        double f = (48. - 24. * aux) / (aux * aux * rSqd);
+        pot += term2 * (term2 - 1.);  
+
+        double aux0 = M0 * f;
+        double aux1 = M1 * f;
+        double aux2 = M2 * f;
+        
+        a0 += aux0;
+        a1 += aux1;
+        a2 += aux2;
+        
+        a[j] -= aux0, a[j+1] -= aux1, a[j+2] -= aux2;
+    } 
+    a[i] += a0;
+    a[i+1] += a1;
+    a[i+2] += a2;
+    return pot;
+}
+
+double computeAccelerations_plus_potential() {
+    double PE = 0.0;
+    #pragma omp parallel for schedule(runtime) reduction(+:PE,a[:VECSIZE]) 
+    for (int i = 0; i < VECSIZE - 1; i += 3) {
+        double ri0 = r[i], ri1 = r[i + 1], ri2 = r[i + 2];
+
+        PE += Potential_Energy(i, ri0, ri1, ri2);      
+    }
+    return PE * 8.0;
+}
+
+double VelocityVerlet_after(double dt, double half_dt, double L) {
+    double psum = 0.0;
+    for (int i=0; i < VECSIZE; i++){
+        v[i] += a[i] * half_dt;
+        if(r[i] < 0. || r[i] >= L){
+            v[i] *=-1.;
+            psum += fabs(v[i]);
         }
     }
     return psum/(3*L*L*dt);
 }
 
 int main(){
-    int i;
     double dt, Vol, Temp, Press, Pavg, Tavg, rho;
     double VolFac, TempFac, PressFac, timefac;
     char prefix[1000], tfn[1000], ofn[1000], afn[1000];
     FILE *tfp, *ofp, *afp;
+    double PE, L;
     
     printf("\n  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
     printf("                  WELCOME TO WILLY P CHEM MD!\n");
@@ -187,23 +221,6 @@ int main(){
     printf("\n  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
     printf("                  TITLE ENTERED AS '%s'\n",prefix);
     printf("  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
-    
-    /*     Table of values for Argon relating natural units to SI units:
-     *     These are derived from Lennard-Jones parameters from the article
-     *     "Liquid argon: Monte carlo and molecular dynamics calculations"
-     *     J.A. Barker , R.A. Fisher & R.O. Watts
-     *     Mol. Phys., Vol. 21, 657-673 (1971)
-     *
-     *     mass:     6.633e-26 kg          = one natural unit of mass for argon, by definition
-     *     energy:   1.96183e-21 J      = one natural unit of energy for argon, directly from L-J parameters
-     *     length:   3.3605e-10  m         = one natural unit of length for argon, directly from L-J parameters
-     *     volume:   3.79499-29 m^3        = one natural unit of volume for argon, by length^3
-     *     time:     1.951e-12 s           = one natural unit of time for argon, by length*sqrt(mass/energy)
-     ***************************************************************************************/
-    
-    //  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    //  Edit these factors to be computed in terms of basic properties in natural units of
-    //  the gas being simulated
     printf("\n  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
     printf("  WHICH NOBLE GAS WOULD YOU LIKE TO SIMULATE? (DEFAULT IS ARGON)\n");
     printf("\n  FOR HELIUM,  TYPE 'He' THEN PRESS 'return' TO CONTINUE\n");
@@ -309,12 +326,12 @@ int main(){
     }
     //  Put all the atoms in simple crystal lattice and give them random velocities
     //  that corresponds to the initial temperature we have specified
-    initialize();
+    initialize(L);
     
     //  Based on their positions, calculate the ininial intermolecular forces
     //  The accellerations of each particle will be defined from the forces and their
     //  mass, and this will allow us to update their positions via Newton's law
-    computeAccelerations_plus_potential();
+    PE = computeAccelerations_plus_potential();
 
     // Print number of particles to the trajectory file
     fprintf(tfp,"%i\n",N);
@@ -327,6 +344,7 @@ int main(){
     int tenp = floor(NumTime/10);
     fprintf(ofp,"  time (s)              T(t) (K)              P(t) (Pa)           Kinetic En. (n.u.)     Potential En. (n.u.) Total En. (n.u.)\n");
     printf("  PERCENTAGE OF CALCULATION COMPLETE:\n  [");
+    int i;
     for (i=0; i<NumTime+1; i++) {
         //  This just prints updates on progress of the calculation for the users convenience
         if (i==tenp) printf(" 10 |");
@@ -344,7 +362,10 @@ int main(){
         // This updates the positions and velocities using Newton's Laws
         // Also computes the Pressure as the sum of momentum changes from wall collisions / timestep
         // which is a Kinetic Theory of gasses concept of Pressure
-        Press = VelocityVerlet(dt);
+        double half_dt = 0.5*dt;
+        VelocityVerlet_before(dt, half_dt);
+        PE = computeAccelerations_plus_potential();
+        Press = VelocityVerlet_after(dt, half_dt, L);
         Press *= PressFac;
         
         //  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!

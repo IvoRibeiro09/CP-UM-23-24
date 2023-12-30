@@ -2,7 +2,6 @@ CC = gcc
 SRC = src/
 CFLAGS = -O3 -ftree-vectorize -msse4 -mavx -march=native -funroll-loops -finline-functions 
 
-
 .DEFAULT_GOAL = all
 
 all: MDseq.exe MDpar.exe
@@ -29,8 +28,7 @@ runseqWperf: MDseq.exe
 	srun --partition=cpar perf stat ./MDseq.exe < inputdata.txt
 
 runparWperf: MDpar.exe
-	export OMP_NUM_THREADS=40;\
-	srun --partition=cpar perf stat ./MDpar.exe < inputdata.txt
+	@export OMP_NUM_THREADS=40; srun --partition=cpar perf stat ./MDpar.exe < inputdata.txt
 
 test: 
 	@diff -s cp_average.txt Correct_res/cp_average.txt
