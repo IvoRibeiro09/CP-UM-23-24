@@ -180,10 +180,16 @@ double VelocityVerlet(double dt) {
     //  Compute accelerations from forces at current position
     // this call was removed (commented) for prledagogical reasons
     //  Update positions and velocity with current velocity and acceleration
-    for (int i=0; i < VECSIZE; i++) {
+    for (int i=0; i < VECSIZE; i+=3) {
         v[i] += a[i] * half_dt;
+        v[i+1] += a[i+1] * half_dt;
+        v[i+2] += a[i+2] * half_dt;
         r[i] += v[i] * dt;     
+        r[i+1] += v[i+1] * dt; 
+        r[i+2] += v[i+2] * dt; 
         a[i] = 0.0;
+        a[i+1] = 0.0;
+        a[i+2] = 0.0;
     }
     //  Update accellerations from updated positions
     PE = 0.;
