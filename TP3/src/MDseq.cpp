@@ -137,15 +137,14 @@ void initialize() {
 //  Function to calculate the kinetic energy of the system
 void MeanSquaredVelocity_and_Kinetic(){
     double velo = 0.;
-    for(int i=0; i < VECSIZE; i++){
-        velo += v[i]*v[i];
+    for(int i=0; i < VECSIZE; i+=3){
+        velo += v[i]*v[i] + v[i+1]*v[i+1] + v[i+2]*v[i+2] ;
     }
     KE = velo/2;
     mvs = velo/N;
 }
 
 void computeAccelerations_plus_potential(){
-    PE = 0.;
     for (int i = 0; i < VECSIZEM1; i+=3) { // loop over all distinct pairs i, j
         double a0 = 0.0, a1 = 0.0, a2 = 0.0;
         double ri0 = r[i], ri1 = r[i + 1], ri2 = r[i + 2];
@@ -155,9 +154,8 @@ void computeAccelerations_plus_potential(){
             double rSqd = M0 * M0 + M1 * M1 + M2 * M2;
         
             double aux = rSqd * rSqd * rSqd;
-            double term2 = 1. / aux;
-            double f = (48. - 24. * aux) / (aux * aux * rSqd);
-            PE += term2 * (term2 - 1.);  
+
+            double f = (48. - 24. * aux) / (aux * aux * rSqd); 
 
             double aux0 = M0 * f;
             double aux1 = M1 * f;
@@ -173,7 +171,6 @@ void computeAccelerations_plus_potential(){
         a[i+1] += a1;
         a[i+2] += a2;
     }
-    PE = PE*8;
 }
 
 
@@ -217,7 +214,7 @@ double VelocityVerlet(double dt) {
         a[i+1] += a1;
         a[i+2] += a2;
     }
-    PE = PE*8;
+    PE *= 8;
     //  Update velocity with updated acceleration
     for (int i=0; i < VECSIZE; i++){
         v[i] += a[i] * half_dt;
