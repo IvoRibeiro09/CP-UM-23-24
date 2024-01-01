@@ -12,12 +12,13 @@ const int VECSIZEM1 = 14997;
 //  Vectors!
 //  Vector for position
 double r[VECSIZE];
+//double* r = (double *) malloc(VECSIZE*sizeof(double));
 //  Vector for velocity
 double v[VECSIZE];
+//double* v= (double *) malloc(VECSIZE*sizeof(double));
 //  Vector for acceleration
 double a[VECSIZE];
-//  Vector for force
-double F[VECSIZE];
+//double* a= (double *) malloc(VECSIZE*sizeof(double));
 
 // atom type
 char atype[10];
@@ -56,46 +57,35 @@ double gaussdist() {
 
 void initializeVelocities() {
     int i;
-    for (i=0; i < VECSIZE;) {
-        v[i++] = gaussdist();
-        v[i++] = gaussdist();
-        v[i++] = gaussdist();
-    }
-    
-    // Vcm = sum_i^N  m*v_i/  sum_i^N  M
-    // Compute center-of-mas velocity according to the formula above
     double vCM[3] = {0, 0, 0};
-    
-    for (i=0; i < VECSIZE;) {
-        vCM[0] += v[i++];
-        vCM[1] += v[i++];
-        vCM[2] += v[i++];
+    for (i=0; i < VECSIZE;i += 3) {
+        v[i] = gaussdist();
+        v[i+1] = gaussdist();
+        v[i+2] = gaussdist();
+        vCM[0] += v[i];
+        vCM[1] += v[i+1];
+        vCM[2] += v[i+2];
     }
-    
     vCM[0] /= N;
     vCM[1] /= N;
     vCM[2] /= N;
-    //  Subtract out the center-of-mass velocity from the
-    //  velocity of each particle... effectively set the
-    //  center of mass velocity to zero so that the system does
-    //  not drift in space!
-    for (i=0; i < VECSIZE;) {
-        v[i++] -= vCM[0];
-        v[i++] -= vCM[1];
-        v[i++] -= vCM[2];
-    }
-    
+   
     //  Now we want to scale the average velocity of the system
     //  by a factor which is consistent with our initial temperature, Tinit
     double vSqdSum, lambda;
     vSqdSum=0.;
     for (i=0; i < VECSIZE;i += 3) {
+        v[i] -= vCM[0];
+        v[i+1] -= vCM[1];
+        v[i+2] -= vCM[2];
         vSqdSum += (v[i]*v[i] + v[i + 1]*v[i + 1] + v[i + 2]*v[i + 2]);
     }
     
-    lambda = sqrt( 3*(N-1)*Tinit/vSqdSum);
+    lambda = sqrt(3*(N-1)*Tinit/vSqdSum);
     
     for (i=0; i < VECSIZE;) {
+        v[i++] *= lambda;
+        v[i++] *= lambda;
         v[i++] *= lambda;
         v[i++] *= lambda;
         v[i++] *= lambda;
@@ -138,7 +128,7 @@ void initialize() {
 void MeanSquaredVelocity_and_Kinetic(){
     double velo = 0.;
     for(int i=0; i < VECSIZE; i+=3){
-        velo += v[i]*v[i] + v[i+1]*v[i+1] + v[i+2]*v[i+2] ;
+        velo += v[i]*v[i] + v[i+1]*v[i+1] + v[i+2]*v[i+2];
     }
     KE = velo/2;
     mvs = velo/N;
@@ -191,7 +181,7 @@ double VelocityVerlet(double dt) {
         a[i+1] = 0.0;
         a[i+2] = 0.0;
     }
-    //  Update accellerations from updated positions
+    
     PE = 0.;
     for (int i = 0; i < VECSIZEM1; i+=3) { // loop over all distinct pairs i, j
         double a0 = 0.0, a1 = 0.0, a2 = 0.0;
@@ -202,9 +192,8 @@ double VelocityVerlet(double dt) {
             double rSqd = M0 * M0 + M1 * M1 + M2 * M2;
         
             double aux = rSqd * rSqd * rSqd;
-            double term2 = 1. / aux;
-            double f = (48. - 24. * aux) / (aux * aux * rSqd);
-            PE += term2 * (term2 - 1.);  
+
+            double f = (48. - 24. * aux) / (aux * aux * rSqd); 
 
             double aux0 = M0 * f;
             double aux1 = M1 * f;

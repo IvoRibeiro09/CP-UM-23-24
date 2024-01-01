@@ -1,16 +1,10 @@
-################################################################################
-# Makefile for general code snippets
-#
-# by André Pereira
-################################################################################
-
 SHELL = /bin/sh
 BIN_NAME = cuda
 
 CXX = nvcc
 LD  = nvcc
 
-CXXFLAGS   = -O2 -g -std=c++11 -arch=sm_35 -Wno-deprecated-gpu-targets # -Xptxas -v
+CXXFLAGS = -O3 -g -std=c++11 -arch=sm_35 -Wno-deprecated-gpu-targets
 
 SRC_DIR = src
 BIN_DIR = bin
@@ -20,10 +14,6 @@ OBJ = $(patsubst src/%.cu,build/%.o,$(SRC))
 BIN = $(BIN_NAME)
 
 vpath %.cu $(SRC_DIR)
-
-################################################################################
-# Rules
-################################################################################
 
 .DEFAULT_GOAL = all
 
