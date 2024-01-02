@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -O3 -ftree-vectorize -msse4 -mavx -march=native -funroll-loops -finline-functions 
+CFLAGS = -O3 -std=c++11 -ftree-vectorize -msse4 -mavx -march=native -funroll-loops -finline-functions 
 
 SHELL = /bin/sh
 BIN_NAME = cuda
@@ -27,6 +27,8 @@ $(BIN_DIR)/$(BIN_NAME): $(OBJ)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -o $@ $(OBJ) $(LIBS)
 
 checkdirs:
+	module load cuda/11.3.1;
+	module load gcc/7.2.0;
 	@mkdir -p $(BUILD_DIR)
 	@mkdir -p $(BIN_DIR)
 
@@ -34,18 +36,16 @@ all: checkdirs $(BIN_DIR)/$(BIN_NAME) MDseq.exe MDpar.exe
 
 MDseq.exe: $(SRC_DIR)/MDseq.cpp
 	module load gcc/11.2.0;\
-	$(CC) $(CFLAGS)-pg  $(SRC_DIR)MDseq.cpp -lm -o MDseq.exe
+	$(CC) $(CFLAGS) -pg $(SRC_DIR)MDseq.cpp -lm -o MDseq.exe
 
 MDpar.exe: $(SRC_DIR)/MDpar.cpp
 	module load gcc/11.2.0;\
-	$(CC) $(CFLAGS)-pg $(SRC_DIR)MDpar.cpp -lm -fopenmp -o MDpar.exe
+	$(CC) $(CFLAGS)-fopenmp $(SRC_DIR)MDpar.cpp -lm -o MDpar.exe
 
 clean:
 	rm -rf slurm* MDpar.exe MDseq.exe gmon.out cp_average.txt cp_output.txt cp_traj.xyz lixo relatorio.txt
-
-load:
-	module load cuda/11.3.1
-	module load gcc/7.2.0
+	find build/ -type f -delete
+	find bin/ -type f -delete
 
 run:
 	sbatch run.sh
@@ -60,7 +60,7 @@ runseqWperf: MDseq.exe
 	srun --partition=cpar perf stat ./MDseq.exe < inputdata.txt
 
 runparWperf: MDpar.exe
-	@export OMP_NUM_THREADS=40; srun --partition=cpar perf stat ./MDpar.exe < inputdata.txt
+	sbatch perfrun.sh
 
 test: 
 	@diff -s cp_average.txt Correct_res/cp_average.txt

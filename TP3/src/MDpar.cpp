@@ -9,8 +9,8 @@
 // Number of particles
 const int N = 5000;
 // Vector's SIZE and vectorś size minus one
-const int VECSIZE = 15000;
-const int VECSIZEM1 = 14997;
+const int VECSIZE = 3 * N;
+const int VECSIZEM1 = 3 * (N-1);
 
 //  Vectors!
 //  Vector for position
@@ -20,20 +20,15 @@ double a[VECSIZE]; // Inicializa com acelerações zero
 //  Vector for velocity
 double v[VECSIZE];
 
-//  Vector for force
-double F[VECSIZE];
-
 // atom type
 char atype[10];
 
 double NA = 6.022140857e23;
 double kBSI = 1.38064852e-23;  // m^2*kg/(s^2*K)
-double KE, mvs;
-//  Size of box, which will be specified in natural units
-
+double PE, KE, mvs;
 
 //  Initial Temperature in Natural Units
-double Tinit;  //2;
+double L, Tinit;  //2;
 
 //  Numerical recipes Gaussian distribution number generator
 double gaussdist() {
@@ -93,7 +88,7 @@ void initializeVelocities() {
     }
 }
 
-void initialize(double L) {
+void initialize() {
     int i, j, n, p, k;
     double pos;
     
@@ -122,78 +117,77 @@ void initialize(double L) {
     initializeVelocities();
 }   
 
-
 //  Function to calculate the averaged velocity squared
 //  Function to calculate the kinetic energy of the system
 void MeanSquaredVelocity_and_Kinetic(){
-    double x1=0.0, x2=0.0, x3 =0.0;
+    double velo = 0.;
+    #pragma omp parallel for schedule(runtime) reduction(+:velo) 
     for(int i=0; i < VECSIZE; i+=3){
-        x1 += v[i]*v[i];
-        x2 += v[i+1]*v[i+1];
-        x3 += v[i+2]*v[i+2];
+        velo += v[i]*v[i] + v[i+1]*v[i+1] + v[i+2]*v[i+2];
     }
-    double velo = x1+x2+x3;
     KE = velo/2;
     mvs = velo/N;
 }
 
-//    new code
+void computeAccelerations_plus_potential() {
+    PE = 0.0;
+    #pragma omp parallel for schedule(runtime) reduction(+:PE,a[:VECSIZE])
+    for (int i = 0; i < VECSIZEM1; i+=3) { // loop over all distinct pairs i, j
+        double ri0 = r[i], ri1 = r[i + 1], ri2 = r[i + 2]; 
+        double a0 = 0.0, a1 = 0.0, a2 = 0.0;
+        #pragma omp simd
+        for (int j = i + 3; j < VECSIZE; j+= 3) {
+            double M0 = ri0 - r[j], M1 = ri1 - r[j + 1], M2 = ri2 - r[j + 2];
+            double rSqd = M0 * M0 + M1 * M1 + M2 * M2;
+        
+            double aux = rSqd * rSqd * rSqd;
+            double term2 = 1. / aux;
+            PE += term2 * (term2 - 1.);
+            double f = (48. - 24. * aux) / (aux * aux * rSqd); 
 
-void VelocityVerlet_before(double dt, double half_dt) {
-    for (int i=0; i < VECSIZE; i++){
+            double aux0 = M0 * f;
+            double aux1 = M1 * f;
+            double aux2 = M2 * f;
+            
+            a0 += aux0;
+            a1 += aux1;
+            a2 += aux2;
+            
+            a[j] -= aux0, a[j+1] -= aux1, a[j+2] -= aux2;
+        } 
+
+        a[i] += a0;
+        a[i+1] += a1;
+        a[i+2] += a2;
+    }
+    PE *= 8;
+}
+double VelocityVerlet(double dt) {
+    double psum = 0.0, half_dt = 0.5*dt;
+    //  Compute accelerations from forces at current position
+    // this call was removed (commented) for prledagogical reasons
+    //  Update positions and velocity with current velocity and acceleration
+    for (int i=0; i < VECSIZE; i+=3) {
         v[i] += a[i] * half_dt;
+        v[i+1] += a[i+1] * half_dt;
+        v[i+2] += a[i+2] * half_dt;
         r[i] += v[i] * dt;     
+        r[i+1] += v[i+1] * dt; 
+        r[i+2] += v[i+2] * dt; 
         a[i] = 0.0;
+        a[i+1] = 0.0;
+        a[i+2] = 0.0;
     }
-}
-
-double Potential_Energy(int i, double ri0, double ri1, double ri2) {
-    double a0 = 0.0, a1 = 0.0, a2 = 0.0, pot = 0.0;
-    int j = i + 3;
-   
-    for (; j < VECSIZE; j+= 3) {
-        double M0 = ri0 - r[j], M1 = ri1 - r[j + 1], M2 = ri2 - r[j + 2];
-        double rSqd = M0 * M0 + M1 * M1 + M2 * M2;
     
-        double aux = rSqd * rSqd * rSqd;
-        double term2 = 1. / aux;
-        double f = (48. - 24. * aux) / (aux * aux * rSqd);
-        pot += term2 * (term2 - 1.);  
-
-        double aux0 = M0 * f;
-        double aux1 = M1 * f;
-        double aux2 = M2 * f;
-        
-        a0 += aux0;
-        a1 += aux1;
-        a2 += aux2;
-        
-        a[j] -= aux0, a[j+1] -= aux1, a[j+2] -= aux2;
-    } 
-    a[i] += a0;
-    a[i+1] += a1;
-    a[i+2] += a2;
-    return pot;
-}
-
-double computeAccelerations_plus_potential() {
-    double PE = 0.0;
-    #pragma omp parallel for schedule(runtime) reduction(+:PE,a[:VECSIZE]) 
-    for (int i = 0; i < VECSIZE - 1; i += 3) {
-        double ri0 = r[i], ri1 = r[i + 1], ri2 = r[i + 2];
-
-        PE += Potential_Energy(i, ri0, ri1, ri2);      
-    }
-    return PE * 8.0;
-}
-
-double VelocityVerlet_after(double dt, double half_dt, double L) {
-    double psum = 0.0;
+    computeAccelerations_plus_potential();
+    
+    //  Update velocity with updated acceleration
     for (int i=0; i < VECSIZE; i++){
         v[i] += a[i] * half_dt;
-        if(r[i] < 0. || r[i] >= L){
-            v[i] *=-1.;
-            psum += fabs(v[i]);
+        // Elastic walls
+        if (r[i] < 0. || r[i] >= L) {
+            v[i] *=-1.; //- elastic walls
+            psum += fabs(v[i]);  // contribution to pressure from "left" walls
         }
     }
     return psum/(3*L*L*dt);
@@ -204,7 +198,6 @@ int main(){
     double VolFac, TempFac, PressFac, timefac;
     char prefix[1000], tfn[1000], ofn[1000], afn[1000];
     FILE *tfp, *ofp, *afp;
-    double PE, L;
     
     printf("\n  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
     printf("                  WELCOME TO WILLY P CHEM MD!\n");
@@ -326,12 +319,12 @@ int main(){
     }
     //  Put all the atoms in simple crystal lattice and give them random velocities
     //  that corresponds to the initial temperature we have specified
-    initialize(L);
+    initialize();
     
     //  Based on their positions, calculate the ininial intermolecular forces
     //  The accellerations of each particle will be defined from the forces and their
     //  mass, and this will allow us to update their positions via Newton's law
-    PE = computeAccelerations_plus_potential();
+    computeAccelerations_plus_potential();
 
     // Print number of particles to the trajectory file
     fprintf(tfp,"%i\n",N);
@@ -343,44 +336,14 @@ int main(){
     
     int tenp = floor(NumTime/10);
     fprintf(ofp,"  time (s)              T(t) (K)              P(t) (Pa)           Kinetic En. (n.u.)     Potential En. (n.u.) Total En. (n.u.)\n");
-    printf("  PERCENTAGE OF CALCULATION COMPLETE:\n  [");
     int i;
     for (i=0; i<NumTime+1; i++) {
-        //  This just prints updates on progress of the calculation for the users convenience
-        if (i==tenp) printf(" 10 |");
-        else if (i==2*tenp) printf(" 20 |");
-        else if (i==3*tenp) printf(" 30 |");
-        else if (i==4*tenp) printf(" 40 |");
-        else if (i==5*tenp) printf(" 50 |");
-        else if (i==6*tenp) printf(" 60 |");
-        else if (i==7*tenp) printf(" 70 |");
-        else if (i==8*tenp) printf(" 80 |");
-        else if (i==9*tenp) printf(" 90 |");
-        else if (i==10*tenp) printf(" 100 ]\n");
-        fflush(stdout);
+        Press = VelocityVerlet(dt) * PressFac;
         
-        // This updates the positions and velocities using Newton's Laws
-        // Also computes the Pressure as the sum of momentum changes from wall collisions / timestep
-        // which is a Kinetic Theory of gasses concept of Pressure
-        double half_dt = 0.5*dt;
-        VelocityVerlet_before(dt, half_dt);
-        PE = computeAccelerations_plus_potential();
-        Press = VelocityVerlet_after(dt, half_dt, L);
-        Press *= PressFac;
-        
-        //  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        //  Now we would like to calculate somethings about the system:
-        //  Instantaneous mean velocity squared, Temperature, Pressure
-        //  Potential, and Kinetic Energy
-        //  We would also like to use the IGL to try to see if we can extract the gas constant
         MeanSquaredVelocity_and_Kinetic();
         
         // Temperature from Kinetic Theory
         Temp = mvs/(3) * TempFac;
-        
-        // Instantaneous gas constant and compressibility - not well defined because
-        // pressure may be zero in some instances because there will be zero wall collisions,
-        // pressure may be very high in some instances because there will be a number of collisions
         Tavg += Temp;
         Pavg += Press;
         

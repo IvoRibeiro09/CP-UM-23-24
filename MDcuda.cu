@@ -1,6 +1,8 @@
 #include "MDcuda.h"
 
-#define NUM_THREADS_PER_BLOCK 16
+#define NUM_THREADS_PER_BLOCK 256
+
+__device__ int d_NCuda;
 
 // Number of particles
 const int N = 5000;
@@ -8,57 +10,55 @@ const int N = 5000;
 const int VECSIZE = 3 * N;
 const int VECSIZEM1 = 3 * (N-1);
 
-__device__ int NCuda;
+//  Vectors!
+//  Vector for position
+//double r[VECSIZE];
+double* r = (double *) malloc(VECSIZE*sizeof(double));
+//  Vector for velocity
+//double v[VECSIZE];
+double* v= (double *) malloc(VECSIZE*sizeof(double));
+//  Vector for acceleration
+//double a[VECSIZE];
+double* a= (double *) malloc(VECSIZE*sizeof(double));
+//  Vector for force
+//double F[VECSIZE];
 
 
-double PE, KE, mvs;
+double *d_r, *d_a; 
+double aux = N * 3 * sizeof(double);
+char *atype = (char *)malloc(3 * sizeof(char));
+
+
 double NA = 6.022140857e23;
 double kBSI = 1.38064852e-23;  // m^2*kg/(s^2*K)
-
+double PE, KE, mvs;
 //  Size of box, which will be specified in natural units
 double L;
 
 //  Initial Temperature in Natural Units
 double Tinit;  //2;
 
-//  Vectors!
-//  Position
-double* r = (double *) malloc(VECSIZE*sizeof(double));
-//  Velocity
-double* v= (double *) malloc(VECSIZE*sizeof(double));
-//  Acceleration
-double* a= (double *) malloc(VECSIZE*sizeof(double));
-
-
-double *d_r, *d_a; 
-double aux = N * 3 * sizeof(double);
-
-char *atype = (char *)malloc(3 * sizeof(char));
-
-
+//  Numerical recipes Gaussian distribution number generator
 double gaussdist() {
     static bool available = false;
     static double gset;
-    double fac, rsq, v1, v2, returnValue;
+    double fac, rsq, v1, v2;
     if (!available) {
         do {
-            v1 = 2.0 * rand() / double(RAND_MAX) - 1.0;
-            v2 = 2.0 * rand() / double(RAND_MAX) - 1.0;
+            v1 = 2. * rand() / double(RAND_MAX) - 1.;
+            v2 = 2. * rand() / double(RAND_MAX) - 1.;
             rsq = v1 * v1 + v2 * v2;
-        } while (rsq >= 1.0 || rsq == 0.0);
+        } while (rsq >= 1. || rsq == 0.);
         
         fac = sqrt(-2.0 * log(rsq) / rsq);
         gset = v1 * fac;
         available = true;
         
-        returnValue =  v2*fac;
+        return v2*fac;
     } else {
-        
         available = false;
-        returnValue = gset;
-        
+        return gset;
     }
-    return returnValue;
 }
 
 void initializeVelocities() {
@@ -108,17 +108,20 @@ void initialize() {
     
     //  index for number of particles assigned positions
     p = 0;
+    double xPos, yPos, halfPos;
+    halfPos = 0.5 * pos;
+
     //  initialize positions
     for (i=0; i<n; i++) {
+        xPos = i*pos + halfPos;
         for (j=0; j<n; j++) {
+            yPos = j*pos + halfPos;
             for (k=0; k<n; k++) {
-                if (p<N) {
-                    
-                    r[p*3+0] = (i + 0.5)*pos;
-                    r[p*3+1] = (j + 0.5)*pos;
-                    r[p*3+2] = (k + 0.5)*pos;
+                if (p<N*3) {
+                    r[p++] = xPos;
+                    r[p++] = yPos;
+                    r[p++] = k*pos + halfPos;
                 }
-                p++;
             }
         }
     }
@@ -127,8 +130,6 @@ void initialize() {
 }   
 
 
-//  Function to calculate the averaged velocity squared
-//  Function to calculate the kinetic energy of the system
 void MeanSquaredVelocity_and_Kinetic(){
     double velo = 0.;
     for(int i=0; i < VECSIZE; i+=3){
@@ -138,6 +139,34 @@ void MeanSquaredVelocity_and_Kinetic(){
     mvs = velo/N;
 }
 
+void computeAccelerations_plus_potential(){
+    for (int i = 0; i < VECSIZEM1; i+=3) { // loop over all distinct pairs i, j
+        double a0 = 0.0, a1 = 0.0, a2 = 0.0;
+        double ri0 = r[i], ri1 = r[i + 1], ri2 = r[i + 2];
+
+        for (int j = i + 3; j < VECSIZE; j+= 3) {
+            double M0 = ri0 - r[j], M1 = ri1 - r[j + 1], M2 = ri2 - r[j + 2];
+            double rSqd = M0 * M0 + M1 * M1 + M2 * M2;
+        
+            double aux = rSqd * rSqd * rSqd;
+
+            double f = (48. - 24. * aux) / (aux * aux * rSqd); 
+
+            double aux0 = M0 * f;
+            double aux1 = M1 * f;
+            double aux2 = M2 * f;
+            
+            a0 += aux0;
+            a1 += aux1;
+            a2 += aux2;
+            
+            a[j] -= aux0, a[j+1] -= aux1, a[j+2] -= aux2;
+        } 
+        a[i] += a0;
+        a[i+1] += a1;
+        a[i+2] += a2;
+    }
+}
 __device__ double atomicAddDouble(double* address, double val) {
     unsigned long long int* address_as_ull = (unsigned long long int*)address;
     unsigned long long int old = *address_as_ull, assumed;
@@ -164,12 +193,12 @@ __global__ void computeAccelerations_plus_potentialGPU(double *d_a, double *d_r,
         sharedRk[threadIdx.x * 3 + k] = d_r[i * 3 + k];
     }
 
-    if (i < NCuda - 1) {
+    if (i < d_NCuda - 1) {
         double vPot_local = 0.0;
         double d_a_aux[3] = {0.0, 0.0, 0.0};
 
-        for (int j = i + 1; j < NCuda; j++) {
-            double aux[3];
+        for (int j = i + 1; j < d_NCuda; j++) {
+            double vals[3];
             double rij[3];
             double rSqd = 0;
 
@@ -179,35 +208,36 @@ __global__ void computeAccelerations_plus_potentialGPU(double *d_a, double *d_r,
 
             rSqd = rij[0] * rij[0] + rij[1] * rij[1] + rij[2] * rij[2];
 
-            double rSqd3 = rSqd * rSqd * rSqd;
-            double term2 = 1. / rSqd3;
-            vPot_local += term2 * (term2 - 1.);
-            double f = (48. - 24. * rSqd3) / (rSqd3 * rSqd3 * rSqd);
+            double rSqd3 = rSqd*rSqd*rSqd;
+            double rSqd6 = rSqd3*rSqd3;
+            vPot_local+=((1-rSqd3)/(rSqd6));
+            
+            double f = ((48 - 24*rSqd3)/(rSqd6*rSqd));
 
-            aux[0] = rij[0] * f; 
-            aux[1] = rij[1] * f; 
-            aux[2] = rij[2] * f;
+            vals[0] = rij[0] * f; 
+            vals[1] = rij[1] * f; 
+            vals[2] = rij[2] * f;
 
-            d_a_aux[0] += aux[0];
-            d_a_aux[1] += aux[1];
-            d_a_aux[2] += aux[2];
+            d_a_aux[0] += vals[0];
+            d_a_aux[1] += vals[1];
+            d_a_aux[2] += vals[2];
 
-            atomicAddDouble(&d_a[j * 3], -aux[0]);
-            atomicAddDouble(&d_a[j * 3 + 1], -aux[1]);
-            atomicAddDouble(&d_a[j * 3 + 2], -aux[2]);
+            atomicAddDouble(&d_a[j * 3], -vals[0]);
+            atomicAddDouble(&d_a[j * 3 + 1], -vals[1]);
+            atomicAddDouble(&d_a[j * 3 + 2], -vals[2]);
 
         }
+        // Atomic reduction to update global variables
         d_Pot[i] = vPot_local;
 
         atomicAddDouble(&d_a[i * 3], d_a_aux[0]);
         atomicAddDouble(&d_a[i * 3 + 1], d_a_aux[1]);
         atomicAddDouble(&d_a[i * 3 + 2], d_a_aux[2]);
+        
     }
 }
-
-void computeAccelerations_plus_potential() {
-
-    double Pot = 0.0;
+void compute_pre_GPU(){
+    PE = 0.;
     double v_Pot[N];
     double* d_Pot;
 
@@ -217,6 +247,8 @@ void computeAccelerations_plus_potential() {
     cudaMalloc((void**)&d_Pot, N * sizeof(double) - 1);
     checkCUDAError("Mem Allocation");
 
+    // Copy all working Data to Device
+    // cudaMemset(d_a, 0, aux);
     cudaMemcpy(d_a, a, aux, cudaMemcpyHostToDevice);
     cudaMemcpy(d_r, r, aux, cudaMemcpyHostToDevice);
     checkCUDAError("Memcpy Host -> Device");
@@ -234,7 +266,7 @@ void computeAccelerations_plus_potential() {
     checkCUDAError("Memcpy Device -> Host");
 
     for (int i = 0; i < N; i++) {
-        Pot += v_Pot[i];
+        PE += v_Pot[i];
     }
 
     // free the device memory
@@ -242,11 +274,8 @@ void computeAccelerations_plus_potential() {
     cudaFree(d_a);
     cudaFree(d_Pot);
     checkCUDAError("Free Mem");
-
-    PE = Pot * 8;
+    PE *= 8;
 }
-
-
 // returns sum of dv/dt*m/A (aka Pressure) from elastic collisions with walls
 double VelocityVerlet(double dt) {
     double psum = 0.0, half_dt = 0.5*dt;
@@ -264,9 +293,7 @@ double VelocityVerlet(double dt) {
         a[i+1] = 0.0;
         a[i+2] = 0.0;
     }
-
-    computeAccelerations_plus_potential();
-
+    compute_pre_GPU();
     //  Update velocity with updated acceleration
     for (int i=0; i < VECSIZE; i++){
         v[i] += a[i] * half_dt;
@@ -281,7 +308,7 @@ double VelocityVerlet(double dt) {
 
 int main(){
     int i;
-    double Vol, Temp, Press, rho;
+    double Vol, Temp, Press, Pavg, Tavg, rho;
     double VolFac, TempFac, PressFac, timefac;
     char prefix[1000], tfn[1000], ofn[1000], afn[1000];
     FILE *tfp, *ofp, *afp;
@@ -350,27 +377,30 @@ int main(){
     printf("  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
     printf("\n\n  ENTER THE INTIAL TEMPERATURE OF YOUR GAS IN KELVIN\n");
     scanf("%lf",&Tinit);
-
+    // Make sure temperature is a positive number!
     if (Tinit<0.) {
         printf("\n  !!!!! ABSOLUTE TEMPERATURE MUST BE A POSITIVE NUMBER!  PLEASE TRY AGAIN WITH A POSITIVE TEMPERATURE!!!\n");
         exit(0);
     }
-
-    if (N>=VECSIZE) {
-        printf("\n\n\n  MAXIMUM NUMBER OF PARTICLES IS %i\n\n  PLEASE ADJUST YOUR INPUT FILE ACCORDINGLY \n\n", VECSIZE);
-        exit(0);
-    }
-
     // Convert initial temperature from kelvin to natural units
     Tinit /= TempFac;
+    
+    printf("\n\n  ENTER THE NUMBER DENSITY IN moles/m^3\n");
+    printf("  FOR REFERENCE, NUMBER DENSITY OF AN IDEAL GAS AT STP IS ABOUT 40 moles/m^3\n");
+    printf("  NUMBER DENSITY OF LIQUID ARGON AT 1 ATM AND 87 K IS ABOUT 35000 moles/m^3\n");
     scanf("%lf",&rho);
-
-    // Copy N to the device variable d_NCuda
-    cudaMemcpyToSymbol(NCuda, &N, sizeof(int));
-
+    
     Vol = N/(rho*NA);
     Vol /= VolFac;
 
+    // Copy N to the device variable d_NCuda
+    cudaMemcpyToSymbol(d_NCuda, &N, sizeof(int));
+    
+    //  Limiting N to MAXPART for practical reasons
+    if (N >= VECSIZE) {
+        printf("\n\n\n  MAXIMUM NUMBER OF PARTICLES IS %i\n\n  PLEASE ADJUST YOUR INPUT FILE ACCORDINGLY \n\n", VECSIZE);
+        exit(0); 
+    }
     if (Vol<N) {
         printf("\n\n\n  YOUR DENSITY IS VERY HIGH!\n\n");
         printf("  THE NUMBER OF PARTICLES IS %i AND THE AVAILABLE VOLUME IS %f NATURAL UNITS\n",N,Vol);
@@ -378,18 +408,15 @@ int main(){
         printf("  PLEASE ADJUST YOUR INPUT FILE ACCORDINGLY AND RETRY\n\n");
         exit(0);
     }
-
-    // Length of the box in natural units:
     L = pow(Vol,(1./3));
+
     
-    //  Files that we can write different quantities to
-    tfp = fopen(tfn,"w");    //  The MD trajectory, coordinates of every particle at each timestep
-    ofp = fopen(ofn,"w");    //  Output of other quantities (T, P, gc, etc) at every timestep
-    afp = fopen(afn,"w");    //  Average T, P, gc, etc from the simulation
+    tfp = fopen(tfn,"w");
+    ofp = fopen(ofn,"w");
+    afp = fopen(afn,"w");
     
     int NumTime = 200;
     double dt = 0.5e-14/timefac;
-
     if (strcmp(atype,"He")==0) {
         dt = 0.2e-14/timefac;
         NumTime=50000;
@@ -400,27 +427,24 @@ int main(){
     computeAccelerations_plus_potential();
 
     fprintf(tfp,"%i\n",N);
-
-    double Pavg = 0.0;
-    double Tavg = 0.0;
+    
+    Pavg = 0;
+    Tavg = 0;
+    
     fprintf(ofp,"  time (s)              T(t) (K)              P(t) (Pa)           Kinetic En. (n.u.)     Potential En. (n.u.) Total En. (n.u.)\n");
     for (i=0; i<NumTime+1; i++) {
-        //  This just prints updates on progress of the calculation for the users convenience
         
-        Press = VelocityVerlet(dt)* PressFac;
-
+        Press = VelocityVerlet(dt) * PressFac;
+        
         MeanSquaredVelocity_and_Kinetic();
-
-        Temp = mvs/3 * TempFac;
-
+        
+        Temp = mvs/(3) * TempFac;
+        
         Tavg += Temp;
         Pavg += Press;
         
         fprintf(ofp,"  %8.4e  %20.8f  %20.8f %20.8f  %20.8f  %20.8f \n",i*dt*timefac,Temp,Press,KE, PE, KE+PE);
     }
-    
-    // Because we have calculated the instantaneous temperature and pressure,
-    // we can take the average over the whole simulation here
     Pavg /= NumTime;
     Tavg /= NumTime;
     double Z = Pavg*(Vol*VolFac)/(N*kBSI*Tavg);
@@ -440,10 +464,6 @@ int main(){
     printf("\n  TOTAL VOLUME (m^3):                      %10.5e \n",Vol*VolFac);
     printf("\n  NUMBER OF PARTICLES (unitless):          %i \n", N); 
     
-    free(r);
-    free(v);
-    free(a);
-    free(atype);
     fclose(tfp);
     fclose(ofp);
     fclose(afp);
