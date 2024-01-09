@@ -84,7 +84,6 @@ void initializeVelocities() {
     for (i=0; i < VECSIZE;) {
         v[i++] *= lambda;
         v[i++] *= lambda;
-        v[i++] *= lambda;
     }
 }
 
@@ -122,8 +121,8 @@ void initialize() {
 void MeanSquaredVelocity_and_Kinetic(){
     double velo = 0.;
     #pragma omp parallel for schedule(runtime) reduction(+:velo) 
-    for(int i=0; i < VECSIZE; i+=3){
-        velo += v[i]*v[i] + v[i+1]*v[i+1] + v[i+2]*v[i+2];
+    for(int i=0; i < VECSIZE; i+=6){
+        velo += v[i]*v[i] + v[i+1]*v[i+1] + v[i+2]*v[i+2] + v[i+3]*v[i+3] + v[i+4]*v[i+4] + v[i+5]*v[i+5];
     }
     KE = velo/2;
     mvs = velo/N;
@@ -131,57 +130,55 @@ void MeanSquaredVelocity_and_Kinetic(){
 
 void computeAccelerations_plus_potential() {
     PE = 0.0;
+
     #pragma omp parallel for schedule(runtime) reduction(+:PE,a[:VECSIZE])
-    for (int i = 0; i < VECSIZEM1; i+=3) { // loop over all distinct pairs i, j
-        double ri0 = r[i], ri1 = r[i + 1], ri2 = r[i + 2]; 
+    for (int i = 0; i < VECSIZEM1; i += 3) {
+        double ri0 = r[i], ri1 = r[i + 1], ri2 = r[i + 2];
         double a0 = 0.0, a1 = 0.0, a2 = 0.0;
-        #pragma omp simd
-        for (int j = i + 3; j < VECSIZE; j+= 3) {
+
+        for (int j = i+3; j < VECSIZE; j += 3) {
             double M0 = ri0 - r[j], M1 = ri1 - r[j + 1], M2 = ri2 - r[j + 2];
             double rSqd = M0 * M0 + M1 * M1 + M2 * M2;
-        
+
             double aux = rSqd * rSqd * rSqd;
-            double term2 = 1. / aux;
-            PE += term2 * (term2 - 1.);
-            double f = (48. - 24. * aux) / (aux * aux * rSqd); 
+            PE += (1 - aux) / (aux * aux);
+            double f = (48. - 24. * aux) / (aux * aux * rSqd);
 
             double aux0 = M0 * f;
             double aux1 = M1 * f;
             double aux2 = M2 * f;
-            
+
             a0 += aux0;
             a1 += aux1;
             a2 += aux2;
-            
-            a[j] -= aux0, a[j+1] -= aux1, a[j+2] -= aux2;
-        } 
 
-        a[i] += a0;
-        a[i+1] += a1;
-        a[i+2] += a2;
+            a[j] -= aux0, a[j + 1] -= aux1, a[j + 2] -= aux2;
+        }
+        a[i] += a0, a[i + 1] += a1, a[i + 2] += a2;
     }
+
     PE *= 8;
 }
+
 double VelocityVerlet(double dt) {
     double psum = 0.0, half_dt = 0.5*dt;
     //  Compute accelerations from forces at current position
     // this call was removed (commented) for prledagogical reasons
     //  Update positions and velocity with current velocity and acceleration
-    for (int i=0; i < VECSIZE; i+=3) {
-        v[i] += a[i] * half_dt;
+    #pragma omp parallel for
+    for (int i=0; i < VECSIZE; i+=2){
+        v[i]   += a[i]   * half_dt;
         v[i+1] += a[i+1] * half_dt;
-        v[i+2] += a[i+2] * half_dt;
-        r[i] += v[i] * dt;     
+        r[i]   += v[i]   * dt;     
         r[i+1] += v[i+1] * dt; 
-        r[i+2] += v[i+2] * dt; 
-        a[i] = 0.0;
+        a[i]   = 0.0;
         a[i+1] = 0.0;
-        a[i+2] = 0.0;
     }
     
     computeAccelerations_plus_potential();
     
     //  Update velocity with updated acceleration
+    #pragma omp parallel for schedule(runtime) reduction(+:psum) 
     for (int i=0; i < VECSIZE; i++){
         v[i] += a[i] * half_dt;
         // Elastic walls
@@ -307,11 +304,7 @@ int main(){
     
     int NumTime;
     if (strcmp(atype,"He")==0) {
-        // dt in natural units of time s.t. in SI it is 5 f.s. for all other gasses
         dt = 0.2e-14/timefac;
-        //  We will run the simulation for NumTime timesteps.
-        //  The total time will be NumTime*dt in natural units
-        //  And NumTime*dt multiplied by the appropriate conversion factor for time in seconds
         NumTime=50000;
     }else {
         dt = 0.5e-14/timefac;

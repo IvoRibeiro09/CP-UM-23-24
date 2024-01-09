@@ -78,13 +78,12 @@ void initializeVelocities() {
         v[i] -= vCM[0];
         v[i+1] -= vCM[1];
         v[i+2] -= vCM[2];
-        vSqdSum += (v[i]*v[i] + v[i + 1]*v[i + 1] + v[i + 2]*v[i + 2]);
+        vSqdSum += (v[i]*v[i] + v[i + 1]*v[i+1] + v[i+2]*v[i+2]);
     }
     
     lambda = sqrt(3*(N-1)*Tinit/vSqdSum);
     
     for (i=0; i < VECSIZE;) {
-        v[i++] *= lambda;
         v[i++] *= lambda;
         v[i++] *= lambda;
     }
@@ -124,10 +123,12 @@ void initialize() {
 //  Function to calculate the averaged velocity squared
 //  Function to calculate the kinetic energy of the system
 void MeanSquaredVelocity_and_Kinetic(){
-    double velo = 0.;
-    for(int i=0; i < VECSIZE; i+=3){
-        velo += v[i]*v[i] + v[i+1]*v[i+1] + v[i+2]*v[i+2];
+    double velo_1 = 0., velo_2 = 0.;
+    for(int i=0; i < VECSIZE; i+=2){
+        velo_1 += v[i]*v[i]; 
+        velo_2 += v[i+1]*v[i+1];
     }
+    double velo = velo_1 + velo_2;
     KE = velo/2;
     mvs = velo/N;
 }
@@ -167,16 +168,13 @@ double VelocityVerlet(double dt) {
     //  Compute accelerations from forces at current position
     // this call was removed (commented) for prledagogical reasons
     //  Update positions and velocity with current velocity and acceleration
-    for (int i=0; i < VECSIZE; i+=3) {
+    for (int i=0; i < VECSIZE; i+=2) {
         v[i] += a[i] * half_dt;
         v[i+1] += a[i+1] * half_dt;
-        v[i+2] += a[i+2] * half_dt;
         r[i] += v[i] * dt;     
         r[i+1] += v[i+1] * dt; 
-        r[i+2] += v[i+2] * dt; 
         a[i] = 0.0;
         a[i+1] = 0.0;
-        a[i+2] = 0.0;
     }
     
     PE = 0.;
@@ -189,8 +187,7 @@ double VelocityVerlet(double dt) {
             double rSqd = M0 * M0 + M1 * M1 + M2 * M2;
         
             double aux = rSqd * rSqd * rSqd;
-            double term2 = 1. / aux;
-            PE += term2 * (term2 - 1.);
+            PE += (1 - aux) / (aux * aux);
             double f = (48. - 24. * aux) / (aux * aux * rSqd); 
 
             double aux0 = M0 * f;

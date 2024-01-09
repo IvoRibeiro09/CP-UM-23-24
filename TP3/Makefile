@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -O3 -std=c++11 -ftree-vectorize -msse4 -mavx -march=native -funroll-loops -finline-functions 
+CFLAGS = -O3 -ftree-vectorize -msse4 -mavx -march=native -funroll-loops
 
 SHELL = /bin/sh
 BIN_NAME = cuda
@@ -27,8 +27,6 @@ $(BIN_DIR)/$(BIN_NAME): $(OBJ)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -o $@ $(OBJ) $(LIBS)
 
 checkdirs:
-	module load cuda/11.3.1;
-	module load gcc/7.2.0;
 	@mkdir -p $(BUILD_DIR)
 	@mkdir -p $(BIN_DIR)
 
@@ -40,10 +38,10 @@ MDseq.exe: $(SRC_DIR)/MDseq.cpp
 
 MDpar.exe: $(SRC_DIR)/MDpar.cpp
 	module load gcc/11.2.0;\
-	$(CC) $(CFLAGS)-fopenmp $(SRC_DIR)MDpar.cpp -lm -o MDpar.exe
+	$(CC) $(CFLAGS) -fno-omit-frame-pointer $(SRC_DIR)MDpar.cpp -lm -fopenmp -o MDpar.exe
 
 clean:
-	rm -rf slurm* MDpar.exe MDseq.exe gmon.out cp_average.txt cp_output.txt cp_traj.xyz lixo relatorio.txt
+	rm -rf slurm* bin/MDpar.exe bin/MDseq.exe gmon.out cp_average.txt cp_output.txt cp_traj.xyz lixo relatorio.txt
 	find build/ -type f -delete
 	find bin/ -type f -delete
 
@@ -66,3 +64,7 @@ test:
 	@diff -s cp_average.txt Correct_res/cp_average.txt
 	@diff -s cp_traj.xyz Correct_res/cp_traj.xyz
 	@diff -s --suppress-common-lines cp_output.txt Correct_res/cp_output.txt 
+
+load:
+	module load cuda/11.3.1;\
+	module load gcc/7.2.0;

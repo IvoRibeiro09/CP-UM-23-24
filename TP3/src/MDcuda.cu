@@ -1,12 +1,12 @@
 #include "MDcuda.h"
 
-#define NUM_THREADS_PER_BLOCK 16
+#define NUM_THREADS_PER_BLOCK 12
 
 // Number of particles
 const int N = 5000;
 // Vector's SIZE and vectorś size minus one
 const int VECSIZE = 3 * N;
-const int VECSIZEM1 = 3 * (N-1);
+//const int VECSIZEM1 = 3 * (N-1);
 
 __device__ int NCuda;
 
@@ -130,10 +130,12 @@ void initialize() {
 //  Function to calculate the averaged velocity squared
 //  Function to calculate the kinetic energy of the system
 void MeanSquaredVelocity_and_Kinetic(){
-    double velo = 0.;
-    for(int i=0; i < VECSIZE; i+=3){
-        velo += v[i]*v[i] + v[i+1]*v[i+1] + v[i+2]*v[i+2];
+    double velo_1 = 0., velo_2 = 0.;
+    for(int i=0; i < VECSIZE; i+=2){
+        velo_1 += v[i]*v[i]; 
+        velo_2 += v[i+1]*v[i+1];
     }
+    double velo = velo_1 + velo_2;
     KE = velo/2;
     mvs = velo/N;
 }
@@ -151,57 +153,50 @@ __device__ double atomicAddDouble(double* address, double val) {
     return __longlong_as_double(old);
 }
 
-//   Uses the derivative of the Lennard-Jones potential to calculate
-//   the forces on each atom.  Then uses a = F/m to calculate the
-//   accelleration of each atom. 
+ 
 __global__ void computeAccelerations_plus_potentialGPU(double *d_a, double *d_r, double *d_Pot) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
 
     __shared__ double sharedRk[NUM_THREADS_PER_BLOCK * 3];
 
-    // Each thread loads the values of rk into shared memory
-    for (int k = 0; k < 3; ++k) {
-        sharedRk[threadIdx.x * 3 + k] = d_r[i * 3 + k];
-    }
+    sharedRk[threadIdx.x * 3] = d_r[i * 3];
+    sharedRk[threadIdx.x * 3 + 1] = d_r[i * 3 + 1];
+    sharedRk[threadIdx.x * 3 + 1] = d_r[i * 3 + 2];
+    
 
     if (i < NCuda - 1) {
         double vPot_local = 0.0;
-        double d_a_aux[3] = {0.0, 0.0, 0.0};
+        double a0 = 0.0, a1 = 0.0, a2 = 0.0;
 
         for (int j = i + 1; j < NCuda; j++) {
-            double aux[3];
-            double rij[3];
-            double rSqd = 0;
+            double M0 = sharedRk[threadIdx.x * 3] - d_r[j * 3],
+                   M1 = sharedRk[threadIdx.x * 3 + 1] - d_r[j * 3 + 1],
+                   M2 = sharedRk[threadIdx.x * 3 + 2] - d_r[j * 3 + 2];
 
-            rij[0] = sharedRk[threadIdx.x * 3] - d_r[j * 3];
-            rij[1] = sharedRk[threadIdx.x * 3 + 1] - d_r[j * 3 + 1];
-            rij[2] = sharedRk[threadIdx.x * 3 + 2] - d_r[j * 3 + 2];
-
-            rSqd = rij[0] * rij[0] + rij[1] * rij[1] + rij[2] * rij[2];
+            double rSqd = M0 * M0 + M1 * M1 + M2 * M2;
 
             double rSqd3 = rSqd * rSqd * rSqd;
-            double term2 = 1. / rSqd3;
-            vPot_local += term2 * (term2 - 1.);
+            vPot_local += (1 - rSqd3) / (rSqd3 * rSqd3);
             double f = (48. - 24. * rSqd3) / (rSqd3 * rSqd3 * rSqd);
 
-            aux[0] = rij[0] * f; 
-            aux[1] = rij[1] * f; 
-            aux[2] = rij[2] * f;
+            double aux0 = M0 * f;
+            double aux1 = M1 * f;
+            double aux2 = M2 * f;
 
-            d_a_aux[0] += aux[0];
-            d_a_aux[1] += aux[1];
-            d_a_aux[2] += aux[2];
+            a0 += aux0;
+            a1 += aux1;
+            a2 += aux2;
 
-            atomicAddDouble(&d_a[j * 3], -aux[0]);
-            atomicAddDouble(&d_a[j * 3 + 1], -aux[1]);
-            atomicAddDouble(&d_a[j * 3 + 2], -aux[2]);
+            atomicAddDouble(&d_a[j * 3], -aux0);
+            atomicAddDouble(&d_a[j * 3 + 1], -aux1);
+            atomicAddDouble(&d_a[j * 3 + 2], -aux2);
 
         }
         d_Pot[i] = vPot_local;
 
-        atomicAddDouble(&d_a[i * 3], d_a_aux[0]);
-        atomicAddDouble(&d_a[i * 3 + 1], d_a_aux[1]);
-        atomicAddDouble(&d_a[i * 3 + 2], d_a_aux[2]);
+        atomicAddDouble(&d_a[i * 3], a0);
+        atomicAddDouble(&d_a[i * 3 + 1], a1);
+        atomicAddDouble(&d_a[i * 3 + 2], a2);
     }
 }
 
@@ -211,7 +206,6 @@ void computeAccelerations_plus_potential() {
     double v_Pot[N];
     double* d_Pot;
 
-    // Allocate the Memory on the Device
     cudaMalloc((void**)&d_r, aux);
     cudaMalloc((void**)&d_a, aux);
     cudaMalloc((void**)&d_Pot, N * sizeof(double) - 1);
@@ -221,15 +215,13 @@ void computeAccelerations_plus_potential() {
     cudaMemcpy(d_r, r, aux, cudaMemcpyHostToDevice);
     checkCUDAError("Memcpy Host -> Device");
 
-    int bpg = (N + NUM_THREADS_PER_BLOCK - 1) / NUM_THREADS_PER_BLOCK;  // Arredondamento para cima
-    // int bpg = ((int) ceil((double) (N/NUM_THREADS_PER_BLOCK))) + 1;
+    int bpg = (N + NUM_THREADS_PER_BLOCK - 1) / NUM_THREADS_PER_BLOCK; 
     computeAccelerations_plus_potentialGPU<<<bpg, NUM_THREADS_PER_BLOCK>>>(d_a, d_r, d_Pot);
     cudaDeviceSynchronize();
     checkCUDAError("Error in PotentialGPU");
 
-    // copy the output to the host (if needed)
     cudaMemcpy(a, d_a, aux, cudaMemcpyDeviceToHost);
-    // cudaMemcpy(r, d_r, aux, cudaMemcpyDeviceToHost); // Acho que não é preciso
+
     cudaMemcpy(v_Pot, d_Pot, N * sizeof(double) - 1, cudaMemcpyDeviceToHost);
     checkCUDAError("Memcpy Device -> Host");
 
@@ -237,7 +229,6 @@ void computeAccelerations_plus_potential() {
         Pot += v_Pot[i];
     }
 
-    // free the device memory
     cudaFree(d_r);
     cudaFree(d_a);
     cudaFree(d_Pot);
