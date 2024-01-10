@@ -41,7 +41,7 @@ MDpar.exe: $(SRC_DIR)/MDpar.cpp
 	$(CC) $(CFLAGS) -fno-omit-frame-pointer $(SRC_DIR)MDpar.cpp -lm -fopenmp -o MDpar.exe
 
 clean:
-	rm -rf slurm* bin/MDpar.exe bin/MDseq.exe gmon.out cp_average.txt cp_output.txt cp_traj.xyz lixo relatorio.txt
+	rm -rf slurm* MDpar.exe MDseq.exe gmon.out cp_average.txt cp_output.txt cp_traj.xyz lixo relatorio.txt
 	find build/ -type f -delete
 	find bin/ -type f -delete
 
